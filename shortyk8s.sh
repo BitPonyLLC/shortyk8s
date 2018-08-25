@@ -4,6 +4,141 @@
 # Make kubectl friendlier
 #
 
+# main entry point for all shortyk8s commands
+function k()
+{
+    if [[ $# -lt 1 ]]; then
+        local of=2
+        [[ -t 1 ]] || of=1 # allow redirect into a pipe
+        cat <<EOF >&$of
+
+  Expansions:
+
+    a <f>    apply --filename=<f>
+    g        get
+    d        describe
+    del      delete
+    ex       exec
+    exi      exec -ti
+    l        logs
+    s <r>    scale --replicas=<r>
+
+${_KGCMDS_HELP}    pc       get pods and containers
+
+    tn       top node
+    tp       top pod --containers
+
+    all      --all-namespaces
+    any      --all-namespaces
+    w        -owide
+    y        -oyaml
+
+    .<pod_match>        replace with matching pods (will include "kind" prefix)
+    ^<pod_match>        replace with FIRST matching pod
+    @<container_match>  replace with FIRST matching container in pod (requires ^<pod_match>)
+    ,<node_match>       replace with matching nodes
+
+  Examples:
+
+    k po                       # => kubectl get pods
+    k g .odd y                 # => kubectl get pod/oddjob-2231453331-sj56r -oyaml
+    k exi ^collab @nginx ash   # => kubectl exec -ti collab-3928615836-37fv4 -c nginx ash
+    k l ^back @back --tail=5   # => kubectl logs backburner-1444197888-7xsgk -c backburner --tail=5
+    k s 8 dep collab           # => kubectl scale --replicas=8 deployments collab
+
+EOF
+        return 1
+    fi
+
+    local a pod res args=()
+
+    while [[ $# -gt 0 ]]; do
+        a=$1; shift
+        case "$a" in
+            a)
+                if ! [[ -f "$1" ]]; then
+                    echo "\"apply\" requires a path to a YAML file (tried \"$1\")" >&2
+                    return 2
+                fi
+                args+=(apply --filename="$1"); shift
+                ;;
+            any|all)
+                if [[ $# -eq 0 ]]; then
+                    _kget args all # simple request to get all... let it thru
+                else
+                    args+=(--all-namespaces)
+                fi
+                ;;
+            d) args+=(describe);;
+            del) args+=(delete);;
+            ex) args+=('exec');;
+            exi) args+=('exec' -ti);;
+            g) args+=(get);;
+            l) args+=(logs);;
+            pc)
+                _kget args pods;
+                args+=('-ocustom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name,'`
+                `'STATUS:.status.phase,RESTARTS:.status.containerStatuses[*].restartCount')
+                ;;
+            repl) krepl "$@"; return;;
+            s)
+                if ! [[ "$1" =~ ^[[:digit:]]+$ ]]; then
+                    echo "\"scale\" requires replicas (\"$1\" is not a number)" >&2
+                    return 3
+                fi
+                args+=(scale --replicas=$1); shift
+                ;;
+            tn) args+=(top node);;
+            tp) args+=(top pod --containers);;
+            u) ku "$@"; return;;
+            w) args+=(-owide);;
+            y) args+=(-oyaml);;
+            ,*) args+=($(knamegrep nodes "${a:1}"));;
+            .*) args+=($(knamegrep pods "${a:1}"));;
+            ^*)
+                pod=$(knamegrep -s pods -m1 "${a:1}")
+                if [[ $? -ne 0 ]]; then
+                    echo "no pods matched \"${a:1}\"" >&2
+                    return 4
+                fi
+                args+=("${pod}")
+                ;;
+            @*)
+                if [[ -z "${pod}" ]]; then
+                    echo 'must select a pod with ^' >&2
+                    return 5
+                fi
+                args+=(-c $(kcongrep "${pod}" -m1 "${a:1}"))
+                if [[ $? -ne 0 ]]; then
+                    echo "no containers matched \"${a:1}\" for the \"${pod}\" pod" >&2
+                    return 6
+                fi
+                ;;
+            *)
+                found=false
+                for i in ${!_KGCMDS_AKA[@]}; do
+                    if [[ $a = ${_KGCMDS_AKA[$i]} ]]; then
+                        found=true
+                        _kget args ${_KGCMDS[$i]}
+                        break
+                    fi
+                done
+                $found || args+=("$a")
+        esac
+    done
+
+    echo "${_KUBECTL}$(printf ' %q' "${args[@]}")" >&2
+    if [[ " ${args[@]} " =~ ' delete ' ]]; then
+        read -r -p 'Are you sure? [y/N] ' res
+        case "$res" in
+            [yY][eE][sS]|[yY]) : ;;
+            *) return 7
+        esac
+    fi
+
+    $_KUBECTL "${args[@]}"
+}
+
 # report brief info for display in a prompt
 function kprompt()
 {
@@ -348,138 +483,6 @@ EOF
 
     xargs "${x_args[@]}" -I'{}' -n1 -- \
           ${_KUBECTL} exec "${e_args[@]}" -- sh -c "${cmd}" <<< "${pods[@]}"
-}
-
-# simplify kubectl commands with abbreviations
-# TODO: consider how best to add krepl or k repl
-function k()
-{
-    if [[ $# -lt 1 ]]; then
-        cat <<EOF >&2
-
-  Expansions:
-
-    a <f>    apply --filename=<f>
-    g        get
-    d        describe
-    del      delete
-    ex       exec
-    exi      exec -ti
-    l        logs
-    s <r>    scale --replicas=<r>
-
-${_KGCMDS_HELP}    pc       get pods and containers
-
-    tn       top node
-    tp       top pod --containers
-
-    all      --all-namespaces
-    any      --all-namespaces
-    w        -owide
-    y        -oyaml
-
-    .<pod_match>        replace with matching pods (will include "kind" prefix)
-    ^<pod_match>        replace with FIRST matching pod
-    @<container_match>  replace with FIRST matching container in pod (requires ^<pod_match>)
-    ,<node_match>       replace with matching nodes
-
-  Examples:
-
-    k po                       # => kubectl get pods
-    k g .odd y                 # => kubectl get pod/oddjob-2231453331-sj56r -oyaml
-    k exi ^collab @nginx ash   # => kubectl exec -ti collab-3928615836-37fv4 -c nginx ash
-    k l ^back @back --tail=5   # => kubectl logs backburner-1444197888-7xsgk -c backburner --tail=5
-    k s 8 dep collab           # => kubectl scale --replicas=8 deployments collab
-
-EOF
-        return 1
-    fi
-
-    local a pod res args=()
-
-    while [[ $# -gt 0 ]]; do
-        a=$1; shift
-        case "$a" in
-            a)
-                if ! [[ -f "$1" ]]; then
-                    echo "\"apply\" requires a path to a YAML file (tried \"$1\")" >&2
-                    return 2
-                fi
-                args+=(apply --filename="$1"); shift
-                ;;
-            any|all)
-                if [[ $# -eq 0 ]]; then
-                    _kget args all # simple request to get all... let it thru
-                else
-                    args+=(--all-namespaces)
-                fi
-                ;;
-            d) args+=(describe);;
-            del) args+=(delete);;
-            ex) args+=('exec');;
-            exi) args+=('exec' -ti);;
-            g) args+=(get);;
-            l) args+=(logs);;
-            pc)
-                _kget args pods;
-                args+=('-ocustom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name,'`
-                `'STATUS:.status.phase,RESTARTS:.status.containerStatuses[*].restartCount')
-                ;;
-            s)
-                if ! [[ "$1" =~ ^[[:digit:]]+$ ]]; then
-                    echo "\"scale\" requires replicas (\"$1\" is not a number)" >&2
-                    return 3
-                fi
-                args+=(scale --replicas=$1); shift
-                ;;
-            tn) args+=(top node);;
-            tp) args+=(top pod --containers);;
-            w) args+=(-owide);;
-            y) args+=(-oyaml);;
-            ,*) args+=($(knamegrep nodes "${a:1}"));;
-            .*) args+=($(knamegrep pods "${a:1}"));;
-            ^*)
-                pod=$(knamegrep -s pods -m1 "${a:1}")
-                if [[ $? -ne 0 ]]; then
-                    echo "no pods matched \"${a:1}\"" >&2
-                    return 4
-                fi
-                args+=("${pod}")
-                ;;
-            @*)
-                if [[ -z "${pod}" ]]; then
-                    echo 'must select a pod with ^' >&2
-                    return 5
-                fi
-                args+=(-c $(kcongrep "${pod}" -m1 "${a:1}"))
-                if [[ $? -ne 0 ]]; then
-                    echo "no containers matched \"${a:1}\" for the \"${pod}\" pod" >&2
-                    return 6
-                fi
-                ;;
-            *)
-                found=false
-                for i in ${!_KGCMDS_AKA[@]}; do
-                    if [[ $a = ${_KGCMDS_AKA[$i]} ]]; then
-                        found=true
-                        _kget args ${_KGCMDS[$i]}
-                        break
-                    fi
-                done
-                $found || args+=("$a")
-        esac
-    done
-
-    echo "${_KUBECTL}$(printf ' %q' "${args[@]}")" >&2
-    if [[ " ${args[@]} " =~ ' delete ' ]]; then
-        read -r -p 'Are you sure? [y/N] ' res
-        case "$res" in
-            [yY][eE][sS]|[yY]) : ;;
-            *) return 7
-        esac
-    fi
-
-    $_KUBECTL "${args[@]}"
 }
 
 # report all pods grouped by nodes
