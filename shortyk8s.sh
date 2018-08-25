@@ -6,18 +6,22 @@
 
 # TODO: look into DRY'ing up common args
 # TODO: look into allowing ^ for <pod_match> args in krepl/each/others (extract into common parser?)
+# TODO: separate into sections: context, node, namespace
+# TODO: add self-update
+# TODO: add `k pci` that shows containers and images
+# TODO: add install helper
+# TODO: try with fish
+# TODO: consider adding namespace expansion
+# TODO: Tab complete for expansion
 
-# NOTE: to pin kubectl at a particular version, follow these steps:
-#       http://zoltanaltfatter.com/2017/09/07/Install-a-specific-version-of-formula-with-homebrew/
-#       but remember to run `brew pin kubernetes-cli` before updating
-
-# list all interesting context names (ignores minikube)
+# list all interesting context names
 function kctxs()
 {
-    kubectl config get-contexts -oname | grep -v minikube
+    kubectl config get-contexts -oname
 }
 
 # exec args for each interesting context
+# TODO: add async and prefix options
 function keachctx()
 {
     local ctx
@@ -31,6 +35,22 @@ EOF
     for ctx in $(kctxs); do
         eval "$@"
     done
+}
+
+# get the current context
+function kctx()
+{
+    if [[ -n "${_K8S_CTX}" ]]; then
+        echo "${_K8S_CTX}"
+    else
+        kubectl config current-context
+    fi
+}
+
+# report brief info for display in a prompt
+function kprompt()
+{
+    echo "$*$(kctx)/$(kns)"
 }
 
 # list all internal node IPs
@@ -86,16 +106,6 @@ function kdf()
     keachnode "$@" sh -c 'df -h / /var/lib/docker | sed 1d' | sort -rnk 6
 }
 
-# get the current context
-function kctx()
-{
-    if [[ -n "${_K8S_CTX}" ]]; then
-        echo "${_K8S_CTX}"
-    else
-        kubectl config current-context
-    fi
-}
-
 # get the current namespace
 function kns()
 {
@@ -106,8 +116,21 @@ function kns()
     fi
 }
 
+function _ku_usage()
+{
+    cat <<EOF >&2
+usage: ku [-s] <namespace>
+       ku [-s] <context> <namespace>
+       ku reset
+
+  Use "-s" to start a "session" that only changes context or namespace for this terminal.  The
+  session is "sticky" until a "reset" is invoked in the same terminal to revert back to using the
+  current configured context.
+
+EOF
+}
+
 # switch to a new default namespace (and optionally a new context) with partial matching
-# TODO: make getting usage easier (ie. -h or --help)
 function ku()
 {
     local ctx ns code session=false
@@ -124,9 +147,15 @@ function ku()
         return
     fi
 
+    if [[ "$1" =~ ^--?h ]]; then
+        _ku_usage
+        return 1
+    fi
+
     if [[ "$1" = 'reset' ]]; then
         unset _K8S_CTX _K8S_NS
         _KUBECTL='kubectl'
+        [[ "$2" = '-q' ]] || ku
         return
     fi
 
@@ -148,16 +177,7 @@ function ku()
     elif [[ $# -eq 1 ]]; then
         ctx=$(kctx)
     else
-        cat <<EOF >&2
-usage: ku [-s] <namespace>
-       ku [-s] <context> <namespace>
-       ku reset
-
-  Use "-s" to start a "session" that only changes context or namespace for this terminal.
-  The session is "sticky" until a "reset" is invoked in the same terminal to use the current
-  configured context.
-
-EOF
+        _ku_usage
         return 1
     fi
 
@@ -172,7 +192,7 @@ EOF
         _K8S_NS=$ns
         _KUBECTL="kubectl --context ${_K8S_CTX} -n ${_K8S_NS}"
     else
-        ku reset
+        ku reset -q
         kubectl config set-context "$ctx" --namespace "$ns" | \
             sed 's/\.$/ using namespace "'"${ns}"'"./'
     fi
@@ -203,6 +223,8 @@ function kcongrep()
 }
 
 # execute an interactive REPL on a container
+# TODO: default container name to be first match of podname (e.g. ^odd == ^odd @odd)
+# TODO: fail if pod/container matches nothing
 function krepl()
 {
     local opt raw=false
@@ -235,7 +257,7 @@ EOF
 
     local cmd pod e_args=('exec' -ti) pod_match=$1; shift
 
-    pod=($(knamegrep -s pods -m1 "${pod_match}"))
+    pod=$(knamegrep -s pods -m1 "${pod_match}")
     e_args+=("${pod}")
 
     if [[ "${1::1}" = '@' ]]; then
@@ -527,4 +549,4 @@ for vals in $(kubectl get 2>&1 | sed -nE "$str"); do
 done
 unset str vals c a
 
-ku reset
+ku reset -q
