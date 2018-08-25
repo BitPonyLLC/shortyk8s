@@ -24,6 +24,7 @@ function k()
     s <r>    scale --replicas=<r>
 
 ${_KGCMDS_HELP}    pc       get pods and containers
+    ap       get all pods separated by hosting nodes
 
     tn       top node
     tp       top pod --containers
@@ -42,9 +43,9 @@ ${_KGCMDS_HELP}    pc       get pods and containers
 
     k po                       # => kubectl get pods
     k g .odd y                 # => kubectl get pod/oddjob-2231453331-sj56r -oyaml
-    k exi ^collab @nginx ash   # => kubectl exec -ti collab-3928615836-37fv4 -c nginx ash
-    k l ^back @back --tail=5   # => kubectl logs backburner-1444197888-7xsgk -c backburner --tail=5
-    k s 8 dep collab           # => kubectl scale --replicas=8 deployments collab
+    k repl ^web @nginx ash     # => kubectl exec -ti webservice-3928615836-37fv4 -c nginx ash
+    k l ^job @job --tail=5     # => kubectl logs bgjobs-1444197888-7xsgk -c bgjob --tail=5
+    k s 8 dep web              # => kubectl scale --replicas=8 deployments webservice
 
 EOF
         return 1
@@ -69,6 +70,7 @@ EOF
                     args+=(--all-namespaces)
                 fi
                 ;;
+            ap) kallpods "$@"; return;;
             d) args+=(describe);;
             del) args+=(delete);;
             ex) args+=('exec');;
@@ -152,7 +154,6 @@ function kctxs()
 }
 
 # exec args for each interesting context
-# TODO: add async and prefix options
 function keachctx()
 {
     local ctx
