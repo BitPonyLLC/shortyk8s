@@ -3,6 +3,8 @@
 > Shortyk8s, shortyk8s, kubectl fan?
 > Make me a command-line as fast as you can!
 
+_**<groan!>**_
+
 Shortyk8s provides simplified kubectl command lines through abbreviations and expansions of
 containers, pods, nodes, namespaces, and contexts.
 
