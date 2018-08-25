@@ -4,13 +4,11 @@
 # Make kubectl friendlier
 #
 
-# TODO: look into DRY'ing up common args
-# TODO: look into allowing ^ for <pod_match> args in krepl/each/others (extract into common parser?)
-# TODO: separate into sections: context, node, namespace
-# TODO: add `k pci` that shows containers and images
-# TODO: try with fish
-# TODO: consider adding namespace expansion
-# TODO: Tab complete for expansion
+# report brief info for display in a prompt
+function kprompt()
+{
+    echo "$*$(kctx)/$(kns)"
+}
 
 # list all interesting context names
 function kctxs()
@@ -43,12 +41,6 @@ function kctx()
     else
         kubectl config current-context
     fi
-}
-
-# report brief info for display in a prompt
-function kprompt()
-{
-    echo "$*$(kctx)/$(kns)"
 }
 
 # list all internal node IPs
@@ -221,8 +213,6 @@ function kcongrep()
 }
 
 # execute an interactive REPL on a container
-# TODO: default container name to be first match of podname (e.g. ^odd == ^odd @odd)
-# TODO: fail if pod/container matches nothing
 function krepl()
 {
     local opt raw=false
@@ -243,7 +233,7 @@ function krepl()
         cat <<EOF >&2
 usage: krepl [OPTIONS] <pod_match> [@<container_match>] [<command> [<args>...]]
 
-  Default command is: bash || ash || sh
+  Default command will try to determine the best shell available (bash || ash || sh).
 
   Options:
 
@@ -253,14 +243,32 @@ EOF
         return 1
     fi
 
-    local cmd pod e_args=('exec' -ti) pod_match=$1; shift
+    local cmd pod con e_args=('exec' -ti) pod_match=$1; shift
+
+    if [[ "${pod_match::1}" = '^' ]] || [[ "${pod_match::1}" = '.' ]]; then
+        pod_match="${pod_match:1}"
+    fi
 
     pod=$(knamegrep -s pods -m1 "${pod_match}")
+    if [[ -z "${pod}" ]]; then
+        echo 'no match found' >&2
+        return 2
+    fi
+
     e_args+=("${pod}")
 
     if [[ "${1::1}" = '@' ]]; then
-        e_args+=(-c "$(kcongrep "${pod}" -m1 "${1:1}")")
+        con="$(kcongrep "${pod}" -m1 "${1:1}")"
+        if [[ -z "${con}" ]]; then
+            echo 'no match found' >&2
+            return 3
+        fi
+        e_args+=(-c "${con}")
         shift
+    else
+        # try finding a matching container based on the pod
+        con="$(kcongrep "${pod}" -m1 "${pod_match}")"
+        [[ -n "${con}" ]] && e_args+=(-c "${con}")
     fi
 
     if [[ $# -eq 0 ]]; then
@@ -543,7 +551,7 @@ function kupdate()
         rc=$?
         echo 'Updated to the latest version'
     else
-        echo "No new updates available (${etag})"
+        echo "No updates available (${etag})"
     fi
 
     rm -f "${tf}"
