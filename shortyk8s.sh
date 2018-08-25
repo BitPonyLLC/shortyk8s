@@ -7,9 +7,7 @@
 # TODO: look into DRY'ing up common args
 # TODO: look into allowing ^ for <pod_match> args in krepl/each/others (extract into common parser?)
 # TODO: separate into sections: context, node, namespace
-# TODO: add self-update
 # TODO: add `k pci` that shows containers and images
-# TODO: add install helper
 # TODO: try with fish
 # TODO: consider adding namespace expansion
 # TODO: Tab complete for expansion
@@ -513,6 +511,44 @@ $(upcase "$rsc")
 ${res}
 EOF
     done
+}
+
+# download the latest version of shortyk8s
+function kupdate()
+{
+    if ! which curl >/dev/null 2>&1; then
+        echo 'Curl is required for updating' 2>&1
+        return 1
+    fi
+
+    local url='https://raw.githubusercontent.com/bradrf/shortyk8s/master/shortyk8s.sh'
+    local hfn="${HOME}/.shortyk8s_hdr"
+
+    local tf=$(mktemp)
+    local cargs=(-sSfo "${tf}" -D "${hfn}")
+
+    local etag=$(sed -n 's/^ETag: *\([^[:space:]]*\).*$/\1/p' "${hfn}" 2>/dev/null)
+    [[ -n "${etag}" ]] && cargs+=(-H "If-None-Match: ${etag}")
+
+    curl "${cargs[@]}" "${url}"
+
+    local rc=0
+    local dstd dstf
+    if [[ $? -ne 0 ]]; then
+        echo 'Unable to check for updates' 2>&1
+        rc=$?
+    elif [[ -s "${tf}" ]]; then
+        # use `cp` to enable automatic following of any symbolic references...
+        cp -f "${tf}" "${BASH_SOURCE[0]}" && source "${BASH_SOURCE[0]}"
+        rc=$?
+        echo 'Updated to the latest version'
+    else
+        echo "No new updates available (${etag})"
+    fi
+
+    rm -f "${tf}"
+
+    return $rc
 }
 
 ######################################################################
