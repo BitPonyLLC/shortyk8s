@@ -150,21 +150,30 @@ function kprompt()
 # list all interesting context names
 function kctxs()
 {
-    kubectl config get-contexts -oname
+    if [[ $# -gt 0 ]]; then
+        kubectl config get-contexts -oname | grep "$@"
+    else
+        kubectl config get-contexts -oname
+    fi
 }
 
 # exec args for each interesting context
 function keachctx()
 {
-    local ctx
+    local args=() ctx
+    if [[ "$1" = '-m' ]]; then
+        shift; args+=("$1"); shift
+    fi
+
     if [[ $# -lt 1 ]]; then
         cat <<EOF >&2
-usage: keachctx <command> [<arg> ....]
-[ NOTE: command is eval'd with a \$cxt variable available ]
+usage: keachctx [-m <ctx_match>] <command> [<arg> ....]
+[ NOTE: command is eval'd with a \$ctx variable available ]
 EOF
         return 1
     fi
-    for ctx in $(kctxs); do
+
+    for ctx in $(kctxs "${args[@]}"); do
         eval "$@"
     done
 }
