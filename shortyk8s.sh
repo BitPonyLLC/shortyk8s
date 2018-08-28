@@ -78,6 +78,7 @@ EOF
             ap) kallpods "$@"; return;;
             d) args+=(describe);;
             del) args+=(delete);;
+            evw) kevw; return;;
             ex) args+=('exec');;
             exi) args+=('exec' -ti);;
             g) args+=(get);;
@@ -512,6 +513,17 @@ EOF
 
     xargs "${x_args[@]}" -I'{}' -n1 -- \
           ${_KUBECTL} exec "${e_args[@]}" -- sh -c "${cmd}" <<< "${pods[@]}"
+}
+
+# watch events sorted by most recent report
+# (kubectl get ev --watch ignores `sort-by` for the first listing)
+function kevw()
+{
+    local args=(get ev --no-headers --sort-by=.lastTimestamp \
+                -ocustom-columns='TIMESTAMP:.lastTimestamp,COUNT:.count,MESSAGE:.message')
+    echo "${_KUBECTL}$(printf ' %q' "${args[@]}" "$@")" >&2
+    ${_KUBECTL} "${args[@]}"
+    ${_KUBECTL} "${args[@]}" --watch-only
 }
 
 # report all pods grouped by nodes

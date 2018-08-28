@@ -6,7 +6,8 @@
 _**<groan!>**_
 
 Shortyk8s provides simplified kubectl command lines through abbreviations and expansions of
-containers, pods, nodes, namespaces, and contexts.
+containers, pods, nodes, namespaces, and contexts. Most commands shortyk8s builds up are reported to
+help you understand exactly what is being invoked.
 
 * [Installing and Updating](#installing-and-updating)
 * [Working with Contexts and Namespaces](#working-with-contexts-and-namespaces)
