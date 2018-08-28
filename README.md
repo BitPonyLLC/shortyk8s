@@ -8,8 +8,26 @@ _**<groan!>**_
 Shortyk8s provides simplified kubectl command lines through abbreviations and expansions of
 containers, pods, nodes, namespaces, and contexts.
 
+* [Installing and Updating](#installing-and-updating)
 * [Working with Contexts and Namespaces](#working-with-contexts-and-namespaces)
 * [Working with Nodes and Pods](#working-with-nodes-and-pods)
+
+---
+## Installing and Updating
+
+Because shorty8s only depends on Bash (v4.3 or greater) and standard Unix tools (awk, grep, sed,
+etc.), installation should be a simple matter of downloading, saving, and sourcing:
+
+``` shell
+$ curl -o ~/.bashrc_shortyk8s https://raw.githubusercontent.com/bradrf/shortyk8s/master/shortyk8s.sh
+$ echo 'source "${HOME}/.bashrc_shortyk8s" >> ~/.bashrc
+```
+
+To get the latest version of shortyk8s, it provides a helper to automate that process for you:
+
+``` shell
+$ kupdate
+```
 
 ---
 ## Working with Contexts and Namespaces
