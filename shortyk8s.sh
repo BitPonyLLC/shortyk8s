@@ -5,6 +5,8 @@
 #
 
 # main entry point for all shortyk8s commands
+# FIXME: k tp all => get all !!!
+# FIXME: should have --any-namespace replace -n if in session (temporary)
 function k()
 {
     if [[ $# -lt 1 ]]; then
@@ -24,6 +26,7 @@ function k()
     s <r>    scale --replicas=<r>
 
 ${_KGCMDS_HELP}    pc       get pods and containers
+    pi       get pods and container images
     ap       get all pods separated by hosting nodes
 
     tn       top node
@@ -38,6 +41,7 @@ ${_KGCMDS_HELP}    pc       get pods and containers
     ^<pod_match>        replace with FIRST matching pod
     @<container_match>  replace with FIRST matching container in pod (requires ^<pod_match>)
     ,<node_match>       replace with matching nodes
+    ~<alt_command>      replace \`kubectl\` with \`<alt_command> --context \$(kctx) -n \$(kns)\`
 
   Examples:
 
@@ -46,12 +50,13 @@ ${_KGCMDS_HELP}    pc       get pods and containers
     k repl ^web @nginx ash     # => kubectl exec -ti webservice-3928615836-37fv4 -c nginx ash
     k l ^job @job --tail=5     # => kubectl logs bgjobs-1444197888-7xsgk -c bgjob --tail=5
     k s 8 dep web              # => kubectl scale --replicas=8 deployments webservice
+    k ~stern ^job --tail 5     # => stern --context usw1 -n prod bgjobs-1444197888-7xsgk --tail 5
 
 EOF
         return 1
     fi
 
-    local a pod res args=()
+    local a pod res cmd=$_KUBECTL args=()
 
     while [[ $# -gt 0 ]]; do
         a=$1; shift
@@ -80,7 +85,12 @@ EOF
             pc)
                 _kget args pods;
                 args+=('-ocustom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name,'`
-                `'STATUS:.status.phase,RESTARTS:.status.containerStatuses[*].restartCount')
+                      `'STATUS:.status.phase,RESTARTS:.status.containerStatuses[*].restartCount')
+                ;;
+            pi)
+                _kget args pods;
+                args+=('-ocustom-columns=NAME:.metadata.name,STATUS:.status.phase,'`
+                      `'IMAGES:.status.containerStatuses[*].image')
                 ;;
             repl) krepl "$@"; return;;
             s)
@@ -116,6 +126,10 @@ EOF
                     return 6
                 fi
                 ;;
+            ~*)
+                cmd=${a:1}
+                args+=(--context "$(kctx)" -n "$(kns)")
+                ;;
             *)
                 found=false
                 for i in ${!_KGCMDS_AKA[@]}; do
@@ -129,7 +143,7 @@ EOF
         esac
     done
 
-    echo "${_KUBECTL}$(printf ' %q' "${args[@]}")" >&2
+    echo "${cmd}$(printf ' %q' "${args[@]}")" >&2
     if [[ " ${args[@]} " =~ ' delete ' ]]; then
         read -r -p 'Are you sure? [y/N] ' res
         case "$res" in
@@ -138,20 +152,24 @@ EOF
         esac
     fi
 
-    $_KUBECTL "${args[@]}"
+    $cmd "${args[@]}"
 }
 
 # report brief info for display in a prompt
 function kprompt()
 {
-    echo "$*$(kctx)/$(kns)"
+    if [[ -z "$_K8S_CTX" ]]; then
+        echo "$*$(kctx)/$(kns)"
+    else
+        echo "$*$(kctx)/$(kns)[tmp]"
+    fi
 }
 
 # list all interesting context names
 function kctxs()
 {
     if [[ $# -gt 0 ]]; then
-        kubectl config get-contexts -oname | grep "$@"
+        kubectl config get-contexts -oname | egrep "$@"
     else
         kubectl config get-contexts -oname
     fi
@@ -191,8 +209,8 @@ function kctx()
 # list all internal node IPs
 function knodeips()
 {
-    $_KUBECTL "$@" get nodes \
-            -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'
+    $_KUBECTL get nodes \
+        -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'
 }
 
 # run a command on each node async
@@ -213,7 +231,7 @@ function keachnode()
     else
         cmd="$*"
     fi
-    for ip in $(knodeips "$@"); do
+    for ip in $(knodeips); do
         pgrep -qf "ssh: .*@${ip}" || ssh "$ip" : # start background ssh control session
         ( ( ssh "$ip" $cmd 2>&1 | while read -r line; do printf '%-15s %s\n' "${ip}:" "${line}"; done ) & )
     done
@@ -343,18 +361,19 @@ function knamegrep()
         shift; cmd='s|^[^/]*/||'
     fi
     if [[ $# -lt 2 ]]; then
-        echo 'usage: knamegrep [-s] { pods | nodes } <grep_args>....' >&2
+        echo 'usage: knamegrep [-s] { pods | nodes } <egrep_args>....' >&2
         return 1
     fi
     t=$1; shift
-    $_KUBECTL get $t -oname | grep "$@" | sed "${cmd}"
+    $_KUBECTL get $t -oname | egrep "$@" | sed "${cmd}"
 }
 
 # list matching container names for a given pod
 function kcongrep()
 {
     local pod=$1; shift
-    $_KUBECTL get pod "${pod}" -oyaml -o'jsonpath={.spec.containers[*].name}' | tr ' ' '\n' | grep "$@"
+    $_KUBECTL get pod "${pod}" -oyaml -o'jsonpath={.spec.containers[*].name}' \
+        | tr ' ' '\n' | egrep "$@"
 }
 
 # execute an interactive REPL on a container
@@ -581,6 +600,7 @@ function _kget()
     local -n a=$1
     shift
     if [[ " ${a[@]} " =~ ' get ' ]] || \
+           [[ " ${a[@]} " =~ ' edit ' ]] || \
            [[ " ${a[@]} " =~ ' describe ' ]] || \
            [[ " ${a[@]} " =~ ' delete ' ]] || \
            [[ " ${a[@]} " =~ ' scale ' ]]; then
