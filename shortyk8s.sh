@@ -28,6 +28,7 @@ function k()
 ${_KGCMDS_HELP}    pc       get pods and containers
     pi       get pods and container images
     ap       get all pods separated by hosting nodes
+    evw      event watcher
 
     tn       top node
     tp       top pod --containers
@@ -144,16 +145,8 @@ EOF
         esac
     done
 
-    echo "${cmd}$(printf ' %q' "${args[@]}")" >&2
-    if [[ " ${args[@]} " =~ ' delete ' ]]; then
-        read -r -p 'Are you sure? [y/N] ' res
-        case "$res" in
-            [yY][eE][sS]|[yY]) : ;;
-            *) return 7
-        esac
-    fi
-
-    $cmd "${args[@]}"
+    [[ " ${args[@]} " =~ ' delete ' ]]
+    _kechorun $? "$cmd" "${args[@]}"
 }
 
 # report brief info for display in a prompt
@@ -210,7 +203,7 @@ function kctx()
 # list all internal node IPs
 function knodeips()
 {
-    $_KUBECTL get nodes \
+    _kechorun 1 "${_KUBECTL}" get nodes \
         -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'
 }
 
@@ -398,6 +391,8 @@ function krepl()
         cat <<EOF >&2
 usage: krepl [OPTIONS] <pod_match> [@<container_match>] [<command> [<args>...]]
 
+  Default container match will use the pod match.
+
   Default command will try to determine the best shell available (bash || ash || sh).
 
   Options:
@@ -408,33 +403,13 @@ EOF
         return 1
     fi
 
-    local cmd pod con e_args=('exec' -ti) pod_match=$1; shift
+    local cmd pods con cnt e_args=('exec' -ti)
 
-    if [[ "${pod_match::1}" = '^' ]] || [[ "${pod_match::1}" = '.' ]]; then
-        pod_match="${pod_match:1}"
-    fi
+    _kgetpodcon "$1" "$2" -m1 || return $?
+    shift $cnt
 
-    pod=$(knamegrep -s pods -m1 "${pod_match}")
-    if [[ -z "${pod}" ]]; then
-        echo 'no match found' >&2
-        return 2
-    fi
-
-    e_args+=("${pod}")
-
-    if [[ "${1::1}" = '@' ]]; then
-        con="$(kcongrep "${pod}" -m1 "${1:1}")"
-        if [[ -z "${con}" ]]; then
-            echo 'no match found' >&2
-            return 3
-        fi
-        e_args+=(-c "${con}")
-        shift
-    else
-        # try finding a matching container based on the pod
-        con="$(kcongrep "${pod}" -m1 "${pod_match}")"
-        [[ -n "${con}" ]] && e_args+=(-c "${con}")
-    fi
+    e_args+=("${pods[0]}")
+    [[ -n "${con}" ]] && e_args+=(-c "${con}")
 
     if [[ $# -eq 0 ]]; then
         cmd=' bash || ash || sh'
@@ -445,9 +420,7 @@ EOF
     fi
 
     e_args+=(-- sh -c "KREPL=${USER};TERM=xterm;PS1=\"\$(hostname -s) $ \";export TERM PS1;${cmd}")
-
-    echo "${_KUBECTL}$(printf ' %q' "${e_args[@]}")" >&2
-    $_KUBECTL "${e_args[@]}"
+    _kechorun 1 "${_KUBECTL}" "${e_args[@]}"
 }
 
 # run commands on one or more containers
@@ -475,6 +448,8 @@ function keach()
         cat <<EOF >&2
 usage: keach [OPTIONS] <pod_match> [@<container_name>] <command> [<arguments>...]
 
+  Default container match will use the pod match.
+
   Options:
 
     -a    run the command asynchronously for all matching pods
@@ -487,12 +462,12 @@ EOF
         return 1
     fi
 
-    local pod cmd x_args=() e_args=('{}') pod_match=$1; shift
+    local pods con cnt cmd x_args=() e_args=('{}')
 
-    if [[ "${1::1}" = '@' ]]; then
-        e_args+=(-c "${1:1}")
-        shift
-    fi
+    _kgetpodcon "$1" "$2" || return $?
+    shift $cnt
+
+    [[ -n "${con}" ]] && e_args+=(-c "${con}")
 
     if $interactive; then
         cmd+='TERM=term'
@@ -505,13 +480,12 @@ EOF
         cmd+=$(printf ' %q' "$@")
     fi
 
-    $prefix && cmd+=" | sed -e \"s/^/\`hostname -f\`: /\""
+    $prefix && cmd+=" | sed \"s/^/\`hostname -f\`: /\""
     $verbose && x_args+=(-t)
 
-    pods=($(knamegrep -s pods "${pod_match}"))
     $async && x_args+=(-P ${#pods[@]})
 
-    xargs "${x_args[@]}" -I'{}' -n1 -- \
+    xargs -t "${x_args[@]}" -I'{}' -n1 -- \
           ${_KUBECTL} exec "${e_args[@]}" -- sh -c "${cmd}" <<< "${pods[@]}"
 }
 
@@ -520,9 +494,8 @@ EOF
 function kevw()
 {
     local args=(get ev --no-headers --sort-by=.lastTimestamp \
-                -ocustom-columns='TIMESTAMP:.lastTimestamp,COUNT:.count,MESSAGE:.message')
-    echo "${_KUBECTL}$(printf ' %q' "${args[@]}" "$@")" >&2
-    ${_KUBECTL} "${args[@]}"
+        -ocustom-columns='TIMESTAMP:.lastTimestamp,COUNT:.count,MESSAGE:.message')
+    _kechorun 1 "${_KUBECTL}" "${args[@]}"
     ${_KUBECTL} "${args[@]}" --watch-only
 }
 
@@ -605,6 +578,55 @@ function kupdate()
 
 ######################################################################
 # PRIVATE - internal helpers
+
+# internal helper to echo a command to stderr, optionally get confirmation, and then run
+function _kechorun()
+{
+    local confirm=$1; shift
+    local cmd=$1; shift
+    echo "${cmd}$(printf ' %q' "$@")" >&2
+    if [[ $confirm -eq 0 ]]; then
+        read -r -p 'Are you sure? [y/N] ' res
+        case "$res" in
+            [yY][eE][sS]|[yY]) : ;;
+            *) return 11
+        esac
+    fi
+    $cmd "$@"
+}
+
+# internal helper to match a pod and optionally a container
+# (intentionally exposes `pod`, `con`, `cnt` variables for caller;
+#  status value is number of args to shift for caller)
+function _kgetpodcon()
+{
+    local pod_match=$1; shift
+    local container_match=$1; shift
+    local grep_args=($@)
+
+    if [[ "${pod_match::1}" = '^' ]] || [[ "${pod_match::1}" = '.' ]]; then
+        pod_match="${pod_match:1}"
+    fi
+
+    pods=($(knamegrep -s pods "${grep_args[@]}" "${pod_match}"))
+    if [[ ${#pods[@]} -lt 1 ]]; then
+        echo 'no match found' >&2
+        return 11
+    fi
+
+    if [[ "${container_match::1}" = '@' ]]; then
+        con="$(kcongrep "${pods[0]}" -m1 "${container_match:1}")"
+        if [[ -z "${con}" ]]; then
+            echo 'no match found' >&2
+            return 22
+        fi
+        cnt=2
+    else
+        # try finding a matching container based on the first pod
+        con="$(kcongrep "${pods[0]}" -m1 "${pod_match}")"
+        cnt=1
+    fi
+}
 
 # internal helper to provide get unless another action has already been requested
 function _kget()
