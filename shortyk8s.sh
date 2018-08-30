@@ -9,8 +9,6 @@ EOF
 fi
 
 # main entry point for all shortyk8s commands
-# FIXME: k tp all => get all !!!
-# FIXME: should have --any-namespace replace -n if in session (temporary)
 function k()
 {
     if [[ $# -lt 1 ]]; then
@@ -79,7 +77,10 @@ EOF
                 fi
                 args+=(apply --filename="$1"); shift
                 ;;
-            any|all) args+=(--all-namespaces);;
+            any|all)
+                [[ -n "${_K8S_NS}" ]] && cmd=${cmd%% -n*} # remove namespace from cmd (session)
+                args+=(--all-namespaces)
+                ;;
             ap) kallpods "$@"; return;;
             d) args+=(describe);;
             del) args+=(delete);;
