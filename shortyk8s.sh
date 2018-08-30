@@ -1,8 +1,12 @@
-#  -*- mode: shell-script -*-
+if [ -z "${BASH_VERSINFO}" ] || [ -z "${BASH_VERSINFO[0]}" ] || [ ${BASH_VERSINFO[0]} -lt 4 ]; then
+    cat <<EOF
 
-#
-# Make kubectl friendlier
-#
+**********************************************************************
+               Shortyk8s requires Bash version >= 4
+**********************************************************************
+
+EOF
+fi
 
 # main entry point for all shortyk8s commands
 # FIXME: k tp all => get all !!!
@@ -59,6 +63,12 @@ EOF
 
     local a pod res cmd=$_KUBECTL args=()
 
+    if [[ " $@ " = ' all ' ]]; then
+        # simple request to get all resources
+        ${_KUBECTL} get all
+        return
+    fi
+
     while [[ $# -gt 0 ]]; do
         a=$1; shift
         case "$a" in
@@ -69,13 +79,7 @@ EOF
                 fi
                 args+=(apply --filename="$1"); shift
                 ;;
-            any|all)
-                if [[ $# -eq 0 ]]; then
-                    _kget args all # simple request to get all... let it thru
-                else
-                    args+=(--all-namespaces)
-                fi
-                ;;
+            any|all) args+=(--all-namespaces);;
             ap) kallpods "$@"; return;;
             d) args+=(describe);;
             del) args+=(delete);;
@@ -633,11 +637,12 @@ function _kget()
 {
     local -n a=$1
     shift
-    if [[ " ${a[@]} " =~ ' get ' ]] || \
-           [[ " ${a[@]} " =~ ' edit ' ]] || \
-           [[ " ${a[@]} " =~ ' describe ' ]] || \
-           [[ " ${a[@]} " =~ ' delete ' ]] || \
-           [[ " ${a[@]} " =~ ' scale ' ]]; then
+    if [[ " ${a[@]} " =~ ' get '      || \
+          " ${a[@]} " =~ ' create '   || \
+          " ${a[@]} " =~ ' describe ' || \
+          " ${a[@]} " =~ ' edit '     || \
+          " ${a[@]} " =~ ' delete '   || \
+          " ${a[@]} " =~ ' scale ' ]]; then
         a+=("$@")
     else
         a+=(get "$@")
@@ -661,3 +666,16 @@ done
 unset str vals c a
 
 ku reset -q
+
+if [[ "$(basename -- "$0")" = 'shortyk8s.sh' ]]; then
+    cat <<EOF >&2
+
+Shortyk8s is meant to be source'd into your environment. Try this:
+
+  $ source "$0"
+
+  $ k
+
+EOF
+   exit 1
+fi
