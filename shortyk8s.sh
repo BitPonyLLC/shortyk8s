@@ -1,8 +1,8 @@
-if [ -z "${BASH_VERSINFO}" ] || [ -z "${BASH_VERSINFO[0]}" ] || [ ${BASH_VERSINFO[0]} -lt 4 ]; then
+if [ -z "${BASH_VERSINFO}" ] || [ -z "${BASH_VERSINFO[0]}" ] || [ ${BASH_VERSINFO[0]} -lt 3 ]; then
     cat <<EOF
 
 **********************************************************************
-               Shortyk8s requires Bash version >= 4
+               Shortyk8s requires Bash version >= 3
 **********************************************************************
 
 EOF
@@ -51,7 +51,7 @@ ${_KGCMDS_HELP}    pc       get pods and containers
     k po                       # => kubectl get pods
     k g .odd y                 # => kubectl get pod/oddjob-2231453331-sj56r -oyaml
     k repl ^web @nginx ash     # => kubectl exec -ti webservice-3928615836-37fv4 -c nginx ash
-    k l ^job @job --tail=5     # => kubectl logs bgjobs-1444197888-7xsgk -c bgjob --tail=5
+    k l ^job --tail=5          # => kubectl logs bgjobs-1444197888-7xsgk --tail=5
     k s 8 dep web              # => kubectl scale --replicas=8 deployments webservice
     k ~stern ^job --tail 5     # => stern --context usw1 -n prod bgjobs-1444197888-7xsgk --tail 5
 
@@ -90,12 +90,12 @@ EOF
             g) args+=(get);;
             l) args+=(logs);;
             pc)
-                _kget args pods;
+                _kget pods;
                 args+=('-ocustom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name,'`
                       `'STATUS:.status.phase,RESTARTS:.status.containerStatuses[*].restartCount')
                 ;;
             pi)
-                _kget args pods;
+                _kget pods;
                 args+=('-ocustom-columns=NAME:.metadata.name,STATUS:.status.phase,'`
                       `'IMAGES:.status.containerStatuses[*].image')
                 ;;
@@ -142,7 +142,7 @@ EOF
                 for i in ${!_KGCMDS_AKA[@]}; do
                     if [[ $a = ${_KGCMDS_AKA[$i]} ]]; then
                         found=true
-                        _kget args ${_KGCMDS[$i]}
+                        _kget ${_KGCMDS[$i]}
                         break
                     fi
                 done
@@ -380,6 +380,8 @@ function krepl()
 {
     local opt raw=false
 
+    OPTIND=1
+
     while getopts 'r' opt; do
         case $opt in
             r) raw=true;;
@@ -390,7 +392,7 @@ function krepl()
         esac
     done
 
-    shift $((OPTIND-1))
+    shift "$((OPTIND-1))"
 
     if [[ $# -lt 1 ]]; then
         cat <<EOF >&2
@@ -433,6 +435,8 @@ function keach()
 {
     local opt async=false interactive=false prefix=false raw=false verbose=false
 
+    OPTIND=1
+
     while getopts 'aiprv' opt; do
         case $opt in
             a) async=true;;
@@ -447,7 +451,7 @@ function keach()
         esac
     done
 
-    shift $((OPTIND-1))
+    shift "$((OPTIND-1))"
 
     if [[ $# -lt 2 ]]; then
         cat <<EOF >&2
@@ -485,12 +489,11 @@ EOF
         cmd+=$(printf ' %q' "$@")
     fi
 
-    $prefix && cmd+=" | sed \"s/^/\`hostname -f\`: /\""
+    $prefix && cmd="(${cmd})"' | awk -v h=`hostname -f`": " "{print h \$0}"'
     $verbose && x_args+=(-t)
-
     $async && x_args+=(-P ${#pods[@]})
 
-    xargs -t "${x_args[@]}" -I'{}' -n1 -- \
+    xargs "${x_args[@]}" -I'{}' -n1 -- \
           ${_KUBECTL} exec "${e_args[@]}" -- sh -c "${cmd}" <<< "${pods[@]}"
 }
 
@@ -584,6 +587,26 @@ function kupdate()
 ######################################################################
 # PRIVATE - internal helpers
 
+_KHI=$(echo -e '\033[30;43m') # black fg, yellow bg
+_KOK=$(echo -e '\033\[1;42m') # bold green fg
+_KWN=$(echo -e '\033[1;33m')  # bold yellow fg
+_KER=$(echo -e '\033[1;31m')  # bold red fg
+_KNM=$(echo -e '\033[0m')     # normal
+
+# _kansi row 3 == running "${_KOK}"
+# _kansi 3 == running "${_KOK}"
+function _kcolorcol()
+{
+    local act
+    if [[ $1 = 'row' ]]; then
+        shift
+        act="print \"$4\" \$0 \"${_KNM}\""
+    else
+        act="\$$1=\"$4\$$1${_KNM}\";print"
+    fi
+    awk "{if(\$$1 $2 \"$3\"){${act}}else{print}}" | column -xt
+}
+
 # internal helper to echo a command to stderr, optionally get confirmation, and then run
 function _kechorun()
 {
@@ -628,7 +651,7 @@ function _kgetpodcon()
         cnt=2
     else
         # try finding a matching container based on the first pod
-        con="$(kcongrep "${pods[0]}" -m1 "${pod_match}")"
+        con="$(kcongrep "${pods[0]}" -m1 "${pod_match%%-*}")"
         cnt=1
     fi
 }
@@ -636,17 +659,16 @@ function _kgetpodcon()
 # internal helper to provide get unless another action has already been requested
 function _kget()
 {
-    local -n a=$1
-    shift
-    if [[ " ${a[@]} " =~ ' get '      || \
-          " ${a[@]} " =~ ' create '   || \
-          " ${a[@]} " =~ ' describe ' || \
-          " ${a[@]} " =~ ' edit '     || \
-          " ${a[@]} " =~ ' delete '   || \
-          " ${a[@]} " =~ ' scale ' ]]; then
-        a+=("$@")
+    # FIXME: once Bash 4 is more widely in use (*cough*OS X*cough*) leverage local -n
+    if [[ " ${args[@]} " =~ ' get '      || \
+          " ${args[@]} " =~ ' create '   || \
+          " ${args[@]} " =~ ' describe ' || \
+          " ${args[@]} " =~ ' edit '     || \
+          " ${args[@]} " =~ ' delete '   || \
+          " ${args[@]} " =~ ' scale ' ]]; then
+        args+=("$@")
     else
-        a+=(get "$@")
+        args+=(get "$@")
     fi
 }
 
