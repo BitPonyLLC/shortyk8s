@@ -318,35 +318,44 @@ function ku()
 
     [[ -n "${_K8S_NS}" ]] && session=true
 
-    if [[ $# -eq 2 ]]; then
+    if [[ $# -eq 1 ]]; then
+        ns=$(${_KUBECTL} get ns -oname | cut -d/ -f2 | sort | grep -m1 "$1")
+        if [[ -z "${ns}" ]]; then
+            ns=$(kns)
+            ctx=$(kctxs | sort -r | grep -m1 "$1")
+            if [[ -z "$ctx" ]]; then
+                echo 'no match found' >&2
+                return 2
+            fi
+        else
+            ctx=$(kctx)
+        fi
+    elif [[ $# -eq 2 ]]; then
         ctx=$(kctxs | sort -r | grep -m1 "$1")
         if [[ -z "$ctx" ]]; then
             echo 'no match found' >&2
-            return 2
+            return 3
         fi
-        shift
-        $session || kubectl config use-context "$ctx"
-    elif [[ $# -eq 1 ]]; then
-        ctx=$(kctx)
+        ns=$(kubectl --context "${ctx}" get ns -oname | cut -d/ -f2 | sort | grep -m1 "$2")
+        if [[ -z "$ns" ]]; then
+            echo 'no match found' >&2
+            return 4
+        fi
     else
         _ku_usage
-        return 1
-    fi
-
-    ns=$(kubectl --context "${ctx}" get ns -oname | cut -d/ -f2 | sort | grep -m1 "$1")
-    if [[ -z "$ns" ]]; then
-        echo 'no match found' >&2
-        return 3
+        return 5
     fi
 
     if $session; then
         _K8S_CTX=$ctx
         _K8S_NS=$ns
         _KUBECTL="kubectl --context ${_K8S_CTX} -n ${_K8S_NS}"
+        echo "Temporarily switching to context \"${_K8S_CTX}\" using namespace \"${_K8S_NS}\""
     else
         ku reset -q
         kubectl config set-context "$ctx" --namespace "$ns" | \
             sed 's/\.$/ using namespace "'"${ns}"'"./'
+        kubectl config use-context "$ctx"
     fi
 
     ku
