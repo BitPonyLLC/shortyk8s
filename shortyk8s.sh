@@ -84,7 +84,7 @@ EOF
             ap) kallpods "$@"; return;;
             d) args+=(describe);;
             del) args+=(delete);;
-            evw) kevw; return;;
+            evw) kevw "${args[@]}"; return;;
             ex) args+=('exec');;
             exi) args+=('exec' -ti);;
             g) args+=(get);;
@@ -502,9 +502,9 @@ EOF
 function kevw()
 {
     local args=(get ev --no-headers --sort-by=.lastTimestamp \
-        -ocustom-columns='TIMESTAMP:.lastTimestamp,COUNT:.count,MESSAGE:.message')
+        -ocustom-columns='TIMESTAMP:.lastTimestamp,COUNT:.count,MESSAGE:.message' "$@")
     _kechorun 1 "${_KUBECTL}" "${args[@]}"
-    ${_KUBECTL} "${args[@]}" --watch-only
+    _kechorun 1 "${_KUBECTL}" "${args[@]}" --watch-only
 }
 
 # report all pods grouped by nodes
