@@ -600,23 +600,22 @@ function kupdate()
 # PRIVATE - internal helpers
 
 _KHI=$(echo -e '\033[30;43m') # black fg, yellow bg
-_KOK=$(echo -e '\033\[1;42m') # bold green fg
+_KOK=$(echo -e '\033[1;32m')  # bold green fg
 _KWN=$(echo -e '\033[1;33m')  # bold yellow fg
 _KER=$(echo -e '\033[1;31m')  # bold red fg
 _KNM=$(echo -e '\033[0m')     # normal
 
-# _kansi row 3 == running "${_KOK}"
-# _kansi 3 == running "${_KOK}"
+# internal helper to colorize a match or its entire row
 function _kcolorcol()
 {
     local act
-    if [[ $1 = 'row' ]]; then
+    if [[ "$1" = 'row' ]]; then
         shift
         act="print \"$4\" \$0 \"${_KNM}\""
     else
-        act="\$$1=\"$4\$$1${_KNM}\";print"
+        act="\$$1=\"$4\"\$$1\"${_KNM}\";print"
     fi
-    awk "{if(\$$1 $2 \"$3\"){${act}}else{print}}" | column -xt
+    awk "{if(NR> 1 && \$$1 $2 $3){${act}}else{print}}" | column -xt
 }
 
 # internal helper to echo a command to stderr, optionally get confirmation, and then run
@@ -643,7 +642,7 @@ function _kctxs()
     if [[ "$1" = '-hl' ]]; then
         shift
         # print highlighted if "selected"...
-        hl='{if($1=="'"${ctx}"'"){print "\033[30m\033[43m" $0 "\033[0m"}else{print}}'
+        hl="{if(\$1==\"${ctx}\"){print \"${_KHI}\" \$0 \"${_KNM}\"}else{print}}"
     fi
     # remove first column...
     code+='sub(/^CURRENT *|^\*? */,"",$0);'
