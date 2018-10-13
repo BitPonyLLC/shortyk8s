@@ -31,6 +31,7 @@ function k()
     s <r>    scale --replicas=<r>
 
 ${_KGCMDS_HELP}    pc       get pods and containers
+    ni       get nodes and private IP addresses
     pi       get pods and container images
     ap       get all pods separated by hosting nodes
     evw      event watcher
@@ -92,6 +93,12 @@ EOF
             exi) args+=('exec' -ti);;
             g) args+=(get);;
             l) args+=(logs);;
+            ni)
+                _kget nodes
+                args+=('-ocustom-columns=NAME:.metadata.name,'`
+                      `'STATUS:.status.conditions[?(@.status=="True")].type,'`
+                      `'INTERNAL IP:.status.addresses[?(@.type=="InternalIP")].address')
+                ;;
             pc)
                 _kget pods
                 args+=('-ocustom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name,'`
@@ -115,14 +122,8 @@ EOF
             u) ku "$@"; return;;
             w) args+=(-owide);;
             y) args+=(-oyaml);;
-            ,*)
-                _kget nodes
-                args+=($(knamegrep nodes "${a:1}"))
-                ;;
-            .*)
-                _kget pods
-                args+=($(knamegrep pods "${a:1}"))
-                ;;
+            ,*) args+=($(knamegrep nodes "${a:1}"));;
+            .*) args+=($(knamegrep pods "${a:1}"));;
             ^*)
                 pod=$(knamegrep pods -m1 "${a:1}")
                 if [[ $? -ne 0 ]]; then
