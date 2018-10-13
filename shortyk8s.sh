@@ -96,13 +96,14 @@ EOF
             ni)
                 _kget nodes
                 args+=('-ocustom-columns=NAME:.metadata.name,'`
-                      `'STATUS:.status.conditions[?(@.status=="True")].type,'`
+                      `'CONDITIONS:.status.conditions[?(@.status=="True")].type,'`
                       `'INTERNAL IP:.status.addresses[?(@.type=="InternalIP")].address')
                 ;;
             pc)
                 _kget pods
-                args+=('-ocustom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name,'`
-                      `'STATUS:.status.phase,RESTARTS:.status.containerStatuses[*].restartCount')
+                args+=('-ocustom-columns=NAME:.metadata.name,'`
+                      `'CONTAINERS:.status.containerStatuses[*].name,STATUS:.status.phase,'`
+                      `'RESTARTS:.status.containerStatuses[*].restartCount')
                 ;;
             pi)
                 _kget pods
