@@ -526,10 +526,10 @@ EOF
 # watch events and pods concurrently (good for monitoring a deployment's progress)
 function kwatch()
 {
-    local i epid="$(mktemp)"
-    ( kevw & echo $! >&3 ) 3>"$epid" &
-    ( # run in a subshell to trap control-c keyboard interrupt
-        trap "echo killing $(<$epid); kill $(<$epid); rm -f $epid" EXIT
+    ( # run in a subshell to trap control-c keyboard interrupt for cleanup of bg procs
+        kevw &
+        while true; do sleep 5; echo; echo ">>> $(date) <<<"; done &
+        trap 'kill %1 %2' EXIT
         k pc -w
     )
 }
