@@ -8,6 +8,9 @@ if [ -z "${BASH_VERSINFO}" ] || [ -z "${BASH_VERSINFO[0]}" ] || [ ${BASH_VERSINF
 EOF
 fi
 
+# show only the names (different than -oname which includes the kind of resource as a prefix)
+knames='--no-headers -ocustom-columns=:metadata.name'
+
 # main entry point for all shortyk8s commands
 function k()
 {
@@ -90,12 +93,12 @@ EOF
             g) args+=(get);;
             l) args+=(logs);;
             pc)
-                _kget pods;
+                _kget pods
                 args+=('-ocustom-columns=NAME:.metadata.name,CONTAINERS:.spec.containers[*].name,'`
                       `'STATUS:.status.phase,RESTARTS:.status.containerStatuses[*].restartCount')
                 ;;
             pi)
-                _kget pods;
+                _kget pods
                 args+=('-ocustom-columns=NAME:.metadata.name,STATUS:.status.phase,'`
                       `'IMAGES:.status.containerStatuses[*].image')
                 ;;
@@ -112,10 +115,16 @@ EOF
             u) ku "$@"; return;;
             w) args+=(-owide);;
             y) args+=(-oyaml);;
-            ,*) args+=($(knamegrep nodes "${a:1}"));;
-            .*) args+=($(knamegrep pods "${a:1}"));;
+            ,*)
+                _kget nodes
+                args+=($(knamegrep nodes "${a:1}"))
+                ;;
+            .*)
+                _kget pods
+                args+=($(knamegrep pods "${a:1}"))
+                ;;
             ^*)
-                pod=$(knamegrep -s pods -m1 "${a:1}")
+                pod=$(knamegrep pods -m1 "${a:1}")
                 if [[ $? -ne 0 ]]; then
                     echo "no pods matched \"${a:1}\"" >&2
                     return 4
@@ -165,21 +174,12 @@ function kprompt()
 }
 
 # list all interesting context names
-function kctxs()
-{
-    if [[ $# -gt 0 ]]; then
-        kubectl config get-contexts -oname | egrep "$@"
-    else
-        kubectl config get-contexts -oname
-    fi
-}
-
 # exec args for each interesting context
 function keachctx()
 {
-    local args=() ctx
+    local args=(.) ctx
     if [[ "$1" = '-m' ]]; then
-        shift; args+=("$1"); shift
+        shift; args=("$1"); shift
     fi
 
     if [[ $# -lt 1 ]]; then
@@ -190,7 +190,7 @@ EOF
         return 1
     fi
 
-    for ctx in $(kctxs "${args[@]}"); do
+    for ctx in $(kctxgrep "${args[@]}"); do
         eval "$@"
     done
 }
@@ -288,14 +288,7 @@ function ku()
     local ctx ns code session=false
 
     if [[ $# -lt 1 ]]; then
-        ctx=$(kctx)
-        # remove first column...
-        code+='sub(/^CURRENT *|^\*? */,"",$0);'
-        # optionally replace the namespace...
-        [[ -n "${_K8S_NS}" ]] && code+='if($1=="'"${ctx}"'"){$4="'"${_K8S_NS}"'";$5="[temporary]"};'
-        # print highlighted if "selected"...
-        kubectl config get-contexts | awk "{${code};print}" | column -xt | \
-            awk '{if($1=="'"${ctx}"'"){print "\033[30m\033[43m" $0 "\033[0m"}else{print}}'
+        _kctxs -hl
         return
     fi
 
@@ -319,24 +312,26 @@ function ku()
     [[ -n "${_K8S_NS}" ]] && session=true
 
     if [[ $# -eq 1 ]]; then
-        ns=$(${_KUBECTL} get ns -oname | cut -d/ -f2 | sort | grep -m1 "$1")
+        # try namespace match first, then context
+        ns=$(knamegrep ns -m1 "$1")
         if [[ -z "${ns}" ]]; then
-            ns=$(kns)
-            ctx=$(kctxs | sort -r | grep -m1 "$1")
-            if [[ -z "$ctx" ]]; then
+            ctx=$(kctxgrep -m1 "$1")
+            if [[ -z "${ctx}" ]]; then
                 echo 'no match found' >&2
                 return 2
             fi
+            ns=$(_kctxs | awk '$1=="'"${ctx}"'"{print $4}' )
         else
             ctx=$(kctx)
         fi
     elif [[ $# -eq 2 ]]; then
-        ctx=$(kctxs | sort -r | grep -m1 "$1")
+        # switch to context and namespace
+        ctx=$(kctxgrep -m1 "$1")
         if [[ -z "$ctx" ]]; then
             echo 'no match found' >&2
             return 3
         fi
-        ns=$(kubectl --context "${ctx}" get ns -oname | cut -d/ -f2 | sort | grep -m1 "$2")
+        ns=$(kubectl --context "${ctx}" get ns $knames | egrep -m1 "$2")
         if [[ -z "$ns" ]]; then
             echo 'no match found' >&2
             return 4
@@ -361,19 +356,25 @@ function ku()
     ku
 }
 
+# list matching context names
+function kctxgrep()
+{
+    if [[ $# -lt 1 ]]; then
+        echo 'usage: kctxgrep <egrep_args>...' >&2
+        return 1
+    fi
+    kubectl config get-contexts -oname | egrep "$@"
+}
+
 # list matching pod names
 function knamegrep()
 {
-    local cmd t
-    if [[ "$1" = '-s' ]]; then
-        shift; cmd='s|^[^/]*/||'
-    fi
     if [[ $# -lt 2 ]]; then
-        echo 'usage: knamegrep [-s] { pods | nodes } <egrep_args>....' >&2
+        echo 'usage: knamegrep <resource> <egrep_args>...' >&2
         return 1
     fi
-    t=$1; shift
-    $_KUBECTL get $t -oname | egrep "$@" | sed "${cmd}"
+    local res=$1; shift
+    $_KUBECTL get $knames $res | egrep "$@"
 }
 
 # list matching container names for a given pod
@@ -630,6 +631,23 @@ function _kechorun()
         esac
     fi
     $cmd "$@"
+}
+
+# internal helper to show contexts without the first column, indicating session changes, optionally
+# highlighting current context
+function _kctxs()
+{
+    local hl='1' ctx=$(kctx)
+    if [[ "$1" = '-hl' ]]; then
+        shift
+        # print highlighted if "selected"...
+        hl='{if($1=="'"${ctx}"'"){print "\033[30m\033[43m" $0 "\033[0m"}else{print}}'
+    fi
+    # remove first column...
+    code+='sub(/^CURRENT *|^\*? */,"",$0);'
+    # optionally replace the namespace...
+    [[ -n "${_K8S_NS}" ]] && code+='if($1=="'"${ctx}"'"){$4="'"${_K8S_NS}"'";$5="[temporary]"};'
+    kubectl config get-contexts | awk "{${code};print}" | column -xt | awk "${hl}"
 }
 
 # internal helper to match a pod and optionally a container
