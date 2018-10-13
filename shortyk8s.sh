@@ -86,7 +86,7 @@ EOF
                 args+=(--all-namespaces)
                 ;;
             ap) kallpods "$@"; return;;
-            d) args+=(describe);;
+            d|desc) args+=(describe);;
             del) args+=(delete);;
             evw) kevw "${args[@]}"; return;;
             ex) args+=('exec');;
@@ -97,13 +97,14 @@ EOF
                 _kget nodes
                 args+=('-ocustom-columns=NAME:.metadata.name,'`
                       `'CONDITIONS:.status.conditions[?(@.status=="True")].type,'`
-                      `'INTERNAL IP:.status.addresses[?(@.type=="InternalIP")].address')
+                      `'INTERNAL_IP:.status.addresses[?(@.type=="InternalIP")].address')
                 ;;
             pc)
                 _kget pods
                 args+=('-ocustom-columns=NAME:.metadata.name,'`
                       `'CONTAINERS:.status.containerStatuses[*].name,STATUS:.status.phase,'`
-                      `'RESTARTS:.status.containerStatuses[*].restartCount')
+                      `'RESTARTS:.status.containerStatuses[*].restartCount,'`
+                      `'HOST_IP:.status.hostIP')
                 ;;
             pi)
                 _kget pods
@@ -161,8 +162,16 @@ EOF
         esac
     done
 
+    local fmtr
+    if [[ -t 1 ]]; then
+        # stdout is a tty
+        fmtr='_kcolorize'
+    else
+        fmtr='cat'
+    fi
+
     [[ " ${args[@]} " =~ ' delete ' ]]
-    _kechorun $? "$cmd" "${args[@]}"
+    _kechorun $? "$cmd" "${args[@]}" | $fmtr
 }
 
 # report brief info for display in a prompt
@@ -600,22 +609,63 @@ function kupdate()
 # PRIVATE - internal helpers
 
 _KHI=$(echo -e '\033[30;43m') # black fg, yellow bg
-_KOK=$(echo -e '\033[1;32m')  # bold green fg
-_KWN=$(echo -e '\033[1;33m')  # bold yellow fg
-_KER=$(echo -e '\033[1;31m')  # bold red fg
-_KNM=$(echo -e '\033[0m')     # normal
+_KOK=$(echo -e '\033[01;32m') # bold green fg
+_KWN=$(echo -e '\033[01;33m') # bold yellow fg
+_KER=$(echo -e '\033[01;31m') # bold red fg
+_KNM=$(echo -e '\033[00;00m') # normal
 
-# internal helper to colorize a match or its entire row
-function _kcolorcol()
+_KCOLORIZE='
+BEGIN {
+    OK = "'"${_KOK}"'"
+    WN = "'"${_KWN}"'"
+    ER = "'"${_KER}"'"
+    NM = "'"${_KNM}"'"
+}
+
+NR == 1 {
+    for (i = 1; i <= NF; ++i) {
+        if (match($i, /STATUS/)) {
+            status_col = i
+            $status_col = NM $status_col NM
+        } else if (match($i, /RESTART/)) {
+            restart_col = i
+            $restart_col = NM $restart_col NM
+        }
+    }
+    print
+}
+
+NR > 1 {
+    if (status_col > 0) {
+        if (match($status_col, /Running|Ready/)) {
+            $status_col = OK $status_col NM
+        } else {
+            $status_col = ER $status_col NM
+        }
+    }
+    if (restart_col > 0) {
+        split($restart_col, cnts, ",")
+        v = ""
+        for (k in cnts) {
+            cnt = cnts[k]
+            if (cnt > 10)
+                l = ER
+            else if (cnt > 0)
+                l = WN
+            else
+                l = NM
+            v = v l cnt NM ","
+        }
+        gsub(/,$/, "", v)
+        $restart_col = v
+    }
+    print
+}
+'
+
+function _kcolorize()
 {
-    local act
-    if [[ "$1" = 'row' ]]; then
-        shift
-        act="print \"$4\" \$0 \"${_KNM}\""
-    else
-        act="\$$1=\"$4\"\$$1\"${_KNM}\";print"
-    fi
-    awk "{if(NR> 1 && \$$1 $2 $3){${act}}else{print}}" | column -xt
+    awk "${_KCOLORIZE}" | column -xt
 }
 
 # internal helper to echo a command to stderr, optionally get confirmation, and then run
