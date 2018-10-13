@@ -63,7 +63,7 @@ EOF
         return 1
     fi
 
-    local a pod res cmd=$_KUBECTL args=()
+    local a pod res watch=false cmd=$_KUBECTL args=()
 
     if [[ " $@ " = ' all ' ]]; then
         # simple request to get all resources
@@ -149,6 +149,10 @@ EOF
                 cmd=${a:1}
                 args+=(--context "$(kctx)" -n "$(kns)")
                 ;;
+            -w)
+                args+=(-w)
+                watch=true
+                ;;
             *)
                 found=false
                 for i in ${!_KGCMDS_AKA[@]}; do
@@ -166,6 +170,7 @@ EOF
     if [[ -t 1 ]]; then
         # stdout is a tty
         fmtr='_kcolorize'
+        $watch && fmtr+=' -nc' # can't use column as it must read all input before writing
     else
         fmtr='cat'
     fi
@@ -518,12 +523,24 @@ EOF
           ${_KUBECTL} exec "${e_args[@]}" -- sh -c "${cmd}" <<< "${pods[@]}"
 }
 
+# watch events and pods concurrently (good for monitoring a deployment's progress)
+function kwatch()
+{
+    local i epid="$(mktemp)"
+    ( kevw & echo $! >&3 ) 3>"$epid" &
+    ( # run in a subshell to trap control-c keyboard interrupt
+        trap "echo killing $(<$epid); kill $(<$epid); rm -f $epid" EXIT
+        k pc -w
+    )
+}
+
 # watch events sorted by most recent report
 # (kubectl get ev --watch ignores `sort-by` for the first listing)
 function kevw()
 {
     local args=(get ev --no-headers --sort-by=.lastTimestamp \
-        -ocustom-columns='TIMESTAMP:.lastTimestamp,COUNT:.count,MESSAGE:.message' "$@")
+        -ocustom-columns='TIMESTAMP:.lastTimestamp,COUNT:.count,KIND:.involvedObject.kind,'`
+                        `'NAME:.involvedObject.name,MESSAGE:.message' "$@")
     _kechorun 1 "${_KUBECTL}" "${args[@]}"
     _kechorun 1 "${_KUBECTL}" "${args[@]}" --watch-only
 }
@@ -665,7 +682,11 @@ NR > 1 {
 
 function _kcolorize()
 {
-    awk "${_KCOLORIZE}" | column -xt
+    if [[ "$1" = '-nc' ]]; then
+        awk "${_KCOLORIZE}"
+    else
+        awk "${_KCOLORIZE}" | column -xt
+    fi
 }
 
 # internal helper to echo a command to stderr, optionally get confirmation, and then run
