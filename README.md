@@ -21,7 +21,8 @@ etc.), installation should be a simple matter of downloading, saving, and sourci
 
 ``` shell
 $ curl -o ~/.bashrc_shortyk8s https://raw.githubusercontent.com/bradrf/shortyk8s/master/shortyk8s.sh
-$ echo 'source "${HOME}/.bashrc_shortyk8s"' >> ~/.bashrc
+$ echo 'source "${HOME}/.bashrc_shortyk8s"' >> ~/.bash_profile # or ~/.bashrc in Ubuntu
+$ source ~/.bashrc
 ```
 
 To get the latest version of shortyk8s, it provides a helper to automate that process for you:

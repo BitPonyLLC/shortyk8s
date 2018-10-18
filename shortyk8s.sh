@@ -167,8 +167,8 @@ EOF
     done
 
     local fmtr
-    if [[ -t 1 ]]; then
-        # stdout is a tty
+    if [[ -t 1 && " ${args[@]} " = *' get '* ]]; then
+        # stdout is a tty and using a simple get...
         fmtr='_kcolorize'
         $watch && fmtr+=' -nc' # can't use column as it must read all input before writing
     else
@@ -735,7 +735,7 @@ function _kgetpodcon()
         pod_match="${pod_match:1}"
     fi
 
-    pods=($(knamegrep -s pods "${grep_args[@]}" "${pod_match}"))
+    pods=($(knamegrep pods "${grep_args[@]}" "${pod_match}"))
     if [[ ${#pods[@]} -lt 1 ]]; then
         echo 'no match found' >&2
         return 11
