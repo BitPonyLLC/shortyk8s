@@ -166,8 +166,11 @@ EOF
         esac
     done
 
-    local fmtr
-    if [[ -t 1 && " ${args[@]} " = *' get '* ]]; then
+    local fmtr argstr=" ${args[@]} "
+    if [[ -t 1 && \
+          "${argstr}" = *' get '* && \
+          "${argstr}" != *' -oyaml ' && \
+          "${argstr}" != *' -ojson ' ]]; then
         # stdout is a tty and using a simple get...
         fmtr='_kcolorize'
         $watch && fmtr+=' -nc' # can't use column as it must read all input before writing
