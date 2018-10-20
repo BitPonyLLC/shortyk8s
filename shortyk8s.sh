@@ -559,8 +559,9 @@ function kallpods()
     [[ $# -gt 1 ]] && match+=' && $1 ~ /'"$2"'/'
     [[ $# -gt 2 ]] && match+=' && $2 ~ /'"$3"'/'
     # sort by node then by namespace then by name
-    $_KUBECTL get --all-namespaces pods -owide | awk "${match} {print}" | sort -b -k8 -k1 -k2 | \
-        awk '{ x[$8]++; if (x[$8] == 1) print "---"; print}'
+    $_KUBECTL get --all-namespaces pods -owide | \
+        awk 'NR==1{print;next};'"${match}"'{print|"sort -b -k8 -k1 -k2"}' | \
+        awk 'NR==1{print;next};{ x[$8]++; if (x[$8] == 1) print "---"; print}'
 }
 
 # report _ALL_ interesting k8s info (more than `get all` provides, but much slower)
