@@ -63,7 +63,7 @@ EOF
         return 1
     fi
 
-    local a pod res watch=false cmd=$_KUBECTL args=()
+    local a pod res nc=false cmd=$_KUBECTL args=()
 
     if [[ " $@ " = ' all ' ]]; then
         # simple request to get all resources
@@ -85,7 +85,10 @@ EOF
                 [[ -n "${_K8S_NS}" ]] && cmd=${cmd%% -n*} # remove namespace from cmd (session)
                 args+=(--all-namespaces)
                 ;;
-            ap) kallpods "$@"; return;;
+            ap)
+                kallpods "$@" | _kcolorize
+                return
+                ;;
             d|desc) args+=(describe);;
             del) args+=(delete);;
             evw) kevw "${args[@]}"; return;;
@@ -149,9 +152,9 @@ EOF
                 cmd=${a:1}
                 args+=(--context "$(kctx)" -n "$(kns)")
                 ;;
-            -w)
-                args+=(-w)
-                watch=true
+            -w|-h*|-o*)
+                args+=($a)
+                nc=true
                 ;;
             *)
                 found=false
@@ -167,13 +170,10 @@ EOF
     done
 
     local fmtr argstr=" ${args[@]} "
-    if [[ -t 1 && \
-          "${argstr}" = *' get '* && \
-          "${argstr}" != *' -oyaml ' && \
-          "${argstr}" != *' -ojson ' ]]; then
+    if [[ -t 1 && "${argstr}" = *' get '* ]]; then
         # stdout is a tty and using a simple get...
         fmtr='_kcolorize'
-        $watch && fmtr+=' -nc' # can't use column as it must read all input before writing
+        $nc && fmtr+=' -nc'
     else
         fmtr='cat'
     fi
@@ -657,7 +657,9 @@ NR == 1 {
 
 NR > 1 {
     if (status_col > 0) {
-        if (match($status_col, /Running|Ready/)) {
+        if (match($status_col, /Disabled/)) {
+            $status_col = WN $status_col NM
+        } else if (match($status_col, /Running|Ready/)) {
             $status_col = OK $status_col NM
         } else {
             $status_col = ER $status_col NM
