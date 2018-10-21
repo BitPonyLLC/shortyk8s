@@ -8,8 +8,8 @@ if [[ "$1" = '--prepare' ]]; then
     cp ~/.kube/config ~/.kube/config.original
     cp simple_kube_config ~/.kube/config
     kubectl --context "$CTX" delete namespace "$NS"
-    echo "wait until namespace stops reporting..."
-    exec kubectl --context "$CTX" get ns -w
+    while kubectl --context "$CTX" get ns | grep "$NS"; do sleep 3; done
+    exit
 fi
 
 if [[ "$1" != '--play-script' ]]; then
@@ -20,6 +20,7 @@ fi
 . shortyk8s.sh
 
 CLR=$(echo -e '\033c')
+CMD=$(echo -e '\033[0;35m$ ')
 
 function c()
 {
@@ -34,11 +35,11 @@ function r()
     if [[ "$1" = '-w' ]]; then shift; w=$1; shift; fi
     if [[ "$1" = '-e' ]]; then
         shift
-        echo -n '$ '
+        echo -n "${CMD}"
         printf '%q ' "$@"
-        echo
+        echo "${_KNM}"
     else
-        echo "\$ $*"
+        echo "${CMD}$*${_KNM}"
     fi
     "$@"
     echo
@@ -53,7 +54,7 @@ c "First, let's see what kubectl configuration we're currently using..."
 r k u
 
 c "Excellent! I see we have a local Kubernetes cluster. Let's use that, but in the default namespace..."
-r k u "$CTX" default
+r k u docker default
 
 c "Hmm, I wonder what nodes are hosting this cluster?"
 r k no
@@ -88,9 +89,9 @@ r -w 8 k del po ^names <<< y
 c "Cool. So, let's look at a view of the pods with their containers..."
 r k pc
 
-c "Better look at the logs... but let's use Stern (an external app) for that!"
+c "Better look at the logs, too... but let's use Stern (an external app) for that!"
 r -w 0 k ~stern names & # stern watches forever
-sleep 3
+sleep 4
 { kill %1 && wait; } 2>/dev/null
 
 c "Alrighty. That's just a few features ShortyK8s provides. Check out \`k\` usage for more!"
