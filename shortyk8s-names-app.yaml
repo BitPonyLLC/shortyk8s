@@ -1,0 +1,45 @@
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: shortyk8s
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: names
+  namespace: shortyk8s
+spec:
+  selector:
+    app: names
+  type: NodePort
+  ports:
+  - name: http
+    port: 10010
+    targetPort: 10010
+    protocol: TCP
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: names
+  namespace: shortyk8s
+  labels:
+    app: names
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: names
+  template:
+    metadata:
+      labels:
+        app: names
+    spec:
+      containers:
+      - name: names
+        image: tomdesinto/name-generator
+        ports:
+        - containerPort: 10010

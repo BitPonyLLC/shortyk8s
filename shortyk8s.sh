@@ -125,8 +125,8 @@ EOF
             tn) args+=(top node);;
             tp) args+=(top pod --containers);;
             u) ku "$@"; return;;
-            w) args+=(-owide);;
-            y) args+=(-oyaml);;
+            w) nc=true; args+=(-owide);;
+            y) nc=true; args+=(-oyaml);;
             ,*) args+=($(knamegrep nodes "${a:1}"));;
             .*) args+=($(knamegrep pods "${a:1}"));;
             ^*)
@@ -531,7 +531,7 @@ function kwatch()
 {
     ( # run in a subshell to trap control-c keyboard interrupt for cleanup of bg procs
         kevw &
-        while true; do sleep 5; echo; echo ">>> $(date) <<<"; done &
+        while true; do sleep 10; echo; echo ">>> $(date) <<<"; done &
         trap 'kill %1 %2' EXIT
         k pc -w
     )
@@ -660,7 +660,7 @@ NR > 1 {
     if (status_col > 0) {
         if (match($status_col, /Disabled/)) {
             $status_col = WN $status_col NM
-        } else if (match($status_col, /Running|Ready/)) {
+        } else if (match($status_col, /Running|Ready|Active/)) {
             $status_col = OK $status_col NM
         } else {
             $status_col = ER $status_col NM
