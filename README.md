@@ -22,7 +22,7 @@ help you understand the full kubectl command being executed.
 ---
 ## Installing and Updating
 
-Because shorty8s only depends on Bash (v4.3 or greater) and standard Unix tools (awk, grep, sed,
+Because shorty8s only depends on Bash (v3 or greater) and standard Unix tools (awk, grep, sed,
 etc.), installation should be a simple matter of downloading, saving, and sourcing:
 
 ``` shell
