@@ -91,6 +91,7 @@ EOF
                 ;;
             d|desc) args+=(describe);;
             del) args+=(delete);;
+            each) keach "${args[@]}" "$@"; return;;
             evw) kevw "${args[@]}"; return;;
             ex) args+=('exec');;
             exi) args+=('exec' -ti);;
