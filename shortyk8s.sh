@@ -659,9 +659,9 @@ NR == 1 {
 
 NR > 1 {
     if (status_col > 0) {
-        if (match($status_col, /Disabled/)) {
+        if (match($status_col, /Disabled|Pending/)) {
             $status_col = WN $status_col NM
-        } else if (match($status_col, /Running|Ready|Active/)) {
+        } else if (match($status_col, /Running|Ready|Active|Succeeded/)) {
             $status_col = OK $status_col NM
         } else {
             $status_col = ER $status_col NM
