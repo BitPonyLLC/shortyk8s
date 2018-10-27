@@ -63,7 +63,7 @@ EOF
         return 1
     fi
 
-    local a pod res nc=false cmd=$_KUBECTL args=()
+    local a pod res caret atsign nc=false cmd=$_KUBECTL args=()
 
     if [[ " $@ " = ' all ' ]]; then
         # simple request to get all resources
@@ -130,25 +130,8 @@ EOF
             y) nc=true; args+=(-oyaml);;
             ,*) args+=($(knamegrep nodes "${a:1}"));;
             .*) args+=($(knamegrep pods "${a:1}"));;
-            ^*)
-                pod=$(knamegrep pods -m1 "${a:1}")
-                if [[ $? -ne 0 ]]; then
-                    echo "no pods matched \"${a:1}\"" >&2
-                    return 4
-                fi
-                args+=("${pod}")
-                ;;
-            @*)
-                if [[ -z "${pod}" ]]; then
-                    echo 'must select a pod with ^' >&2
-                    return 5
-                fi
-                args+=(-c $(kcongrep "${pod}" -m1 "${a:1}"))
-                if [[ $? -ne 0 ]]; then
-                    echo "no containers matched \"${a:1}\" for the \"${pod}\" pod" >&2
-                    return 6
-                fi
-                ;;
+            ^*) caret="$a";;
+            @*) atsign="$a";;
             ~*)
                 cmd=${a:1}
                 args+=(--context "$(kctx)" -n "$(kns)")
@@ -169,6 +152,12 @@ EOF
                 $found || args+=("$a")
         esac
     done
+
+    if [[ -n "${caret}" ]]; then
+        _kgetpodcon "${caret}" "${atsign}" -m1 || return $?
+        args+=("${pods[0]}")
+        [[ -n "${con}" ]] && args+=(-c "${con}")
+    fi
 
     local fmtr argstr=" ${args[@]} "
     if [[ -t 1 && "${argstr}" = *' get '* ]]; then
@@ -742,6 +731,7 @@ function _kgetpodcon()
         pod_match="${pod_match:1}"
     fi
 
+    # expose the `pods` array to caller
     pods=($(knamegrep pods "${grep_args[@]}" "${pod_match}"))
     if [[ ${#pods[@]} -lt 1 ]]; then
         echo 'no match found' >&2
@@ -749,11 +739,13 @@ function _kgetpodcon()
     fi
 
     if [[ "${container_match::1}" = '@' ]]; then
+        # expose the `con` value to caller
         con="$(kcongrep "${pods[0]}" -m1 "${container_match:1}")"
         if [[ -z "${con}" ]]; then
             echo 'no match found' >&2
             return 22
         fi
+        # expose the `cnt` value to caller (for argument shifting)
         cnt=2
     else
         # try finding a matching container based on the first pod
