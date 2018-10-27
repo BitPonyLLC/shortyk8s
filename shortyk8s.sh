@@ -735,6 +735,11 @@ function _kgetpodcon()
         pod_match="${pod_match:1}"
     fi
 
+    # split on colon to allow POD:PATH variables (for logs)
+    local pod_match_a
+    IFS=: read -ra pod_match_a <<< "${pod_match}"
+    pod_match="${pod_match_a[0]}"
+
     # expose the `pods` array to caller
     pods=($(knamegrep pods "${grep_args[@]}" "${pod_match}"))
     if [[ ${#pods[@]} -lt 1 ]]; then
@@ -755,6 +760,15 @@ function _kgetpodcon()
         # try finding a matching container based on the first pod
         con="$(kcongrep "${pods[0]}" -m1 "${pod_match%%-*}")"
         cnt=1
+    fi
+
+    if [[ ${#pod_match_a[@]} -gt 1 ]]; then
+        # append the path to the pods found
+        local pod orig_pods=("${pods[@]}")
+        pods=()
+        for pod in "${orig_pods[@]}"; do
+            pods+=("${pod}:${pod_match_a[1]}")
+        done
     fi
 }
 
