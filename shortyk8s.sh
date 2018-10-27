@@ -582,42 +582,26 @@ EOF
     done
 }
 
-# download the latest version of shortyk8s
+# get the latest version of shortyk8s
 function kupdate()
 {
-    if ! which curl >/dev/null 2>&1; then
-        echo 'Curl is required for updating' 2>&1
+    if ! which git >/dev/null 2>&1; then
+        echo 'Git is required for updating (or installing)' 2>&1
         return 1
     fi
 
-    local url='https://raw.githubusercontent.com/bradrf/shortyk8s/master/shortyk8s.sh'
-    local hfn="${HOME}/.shortyk8s_hdr"
-
-    local tf=$(mktemp)
-    local cargs=(-sSfo "${tf}" -D "${hfn}")
-
-    local etag=$(sed -n 's/^ETag: *\([^[:space:]]*\).*$/\1/p' "${hfn}" 2>/dev/null)
-    [[ -n "${etag}" ]] && cargs+=(-H "If-None-Match: ${etag}")
-
-    curl "${cargs[@]}" "${url}"
-
-    local rc=0
-    local dstd dstf
-    if [[ $? -ne 0 ]]; then
-        echo 'Unable to check for updates' 2>&1
-        rc=$?
-    elif [[ -s "${tf}" ]]; then
-        # use `cp` to enable automatic following of any symbolic references...
-        cp -f "${tf}" "${BASH_SOURCE[0]}" && source "${BASH_SOURCE[0]}"
-        rc=$?
-        echo 'Updated to the latest version'
+    local khome="${HOME}/.shortyk8s"
+    if [[ -d "${khome}/.git" ]]; then
+        git -C "${khome}" pull || return
     else
-        echo "No updates available (${etag})"
+        git clone -q https://github.com/bradrf/shortyk8s.git "${khome}" || return
     fi
 
-    rm -f "${tf}"
-
-    return $rc
+    if [[ "$1" = '--install' ]]; then
+        echo ". '${khome}/shortyk8s.sh'" >> "${HOME}/.bash_profile"
+    else
+        . "${khome}/shortyk8s.sh"
+    fi
 }
 
 ######################################################################
@@ -807,14 +791,33 @@ unset str vals c a
 ku reset -q
 
 if [[ "$(basename -- "$0")" = 'shortyk8s.sh' ]]; then
-    cat <<EOF >&2
+    if [[ "$1" = 'install' ]]; then
+        kupdate --install || exit
+        cat <<EOF
 
-Shortyk8s is meant to be source'd into your environment. Try this:
+Shortyk8s has been added to ${HOME}/.bash_profile.
 
-  $ source "$0"
+Now reload your environment like this:
 
-  $ k
+  $ . "${HOME}/.bash_profile"
+
+And then try this to show the current kubectl configuration contexts:
+
+  $ k u
 
 EOF
-   exit 1
+    else
+        cat <<EOF >&2
+
+Shortyk8s is meant to be source'd into your environment. You can try it out temporarily like this:
+
+  $ . "$0"
+
+However, if you'd like it to updatable and ready in all future terminals, you can do this:
+
+  $ bash "$0" install
+
+EOF
+        exit 1
+    fi
 fi
