@@ -520,7 +520,7 @@ EOF
 function kwatch()
 {
     ( # run in a subshell to trap control-c keyboard interrupt for cleanup of bg procs
-        kevw &
+        kevw --new &
         while true; do sleep 10; echo; echo ">>> $(date) <<<"; done &
         trap 'kill %1 %2' EXIT
         k pc -w
@@ -531,10 +531,14 @@ function kwatch()
 # (kubectl get ev --watch ignores `sort-by` for the first listing)
 function kevw()
 {
+    local new=false
+    if [[ "$1" = '--new' ]]; then
+        shift; new=true
+    fi
     local args=(get ev --no-headers --sort-by=.lastTimestamp \
         -ocustom-columns='TIMESTAMP:.lastTimestamp,COUNT:.count,KIND:.involvedObject.kind,'`
                         `'NAME:.involvedObject.name,MESSAGE:.message' "$@")
-    _kechorun 1 "${_KUBECTL}" "${args[@]}"
+    $new || _kechorun 1 "${_KUBECTL}" "${args[@]}"
     _kechorun 1 "${_KUBECTL}" "${args[@]}" --watch-only
 }
 
