@@ -58,6 +58,7 @@ ${_KGCMDS_HELP}    pc       get pods and containers
     k l ^job --tail=5          # => kubectl logs bgjobs-1444197888-7xsgk --tail=5
     k s 8 dep web              # => kubectl scale --replicas=8 deployments webservice
     k ~stern ^job --tail 5     # => stern --context usw1 -n prod bgjobs-1444197888-7xsgk --tail 5
+    k cp notes.txt ^web:/tmp   # => kubectl cp notes.txt web-55b79cccb9-cjv2s:/tmp -c web
 
 EOF
         return 1
@@ -820,7 +821,7 @@ Shortyk8s is meant to be source'd into your environment. You can try it out temp
 
   $ source "$0"
 
-However, if you'd like it to updatable and ready in all future terminals, you can do this:
+However, if you'd like it to be updatable and ready in all future terminals, you can do this:
 
   $ bash "$0" install
 
