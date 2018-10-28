@@ -7,7 +7,8 @@ _**<groan!>**_
 
 Shortyk8s provides simplified kubectl command lines through abbreviations and expansions of
 containers, pods, nodes, namespaces, and contexts. Most commands shortyk8s builds up are reported to
-help you understand the full kubectl command being executed.
+help you understand the full kubectl command being executed. Watch the preview to get a sense for
+what it can do.
 
 * [Preview](#preview)
 * [Installing and Updating](#installing-and-updating)
@@ -23,12 +24,12 @@ help you understand the full kubectl command being executed.
 ## Installing and Updating
 
 Because shorty8s only depends on Bash (v3 or greater) and standard Unix tools (awk, grep, sed,
-etc.), installation should be a simple matter of downloading, saving, and sourcing:
+etc.), installation should be a simple matter of downloading and sourcing:
 
 ``` shell
-$ curl -o ~/.bashrc_shortyk8s https://raw.githubusercontent.com/bradrf/shortyk8s/master/shortyk8s.sh
-$ echo 'source "${HOME}/.bashrc_shortyk8s"' >> ~/.bash_profile # or ~/.bashrc in Ubuntu
-$ source ~/.bash_profile # or .bashrc
+$ curl https://raw.githubusercontent.com/bradrf/shortyk8s/master/shortyk8s.sh | bash -s -- install
+
+$ source ~/.bash_profile
 ```
 
 To get the latest version of shortyk8s, it provides a helper to automate that process for you:

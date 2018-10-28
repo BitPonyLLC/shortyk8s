@@ -777,8 +777,15 @@ _KGCMDS=()
 _KGCMDS_AKA=()
 _KGCMDS_HELP=''
 str='s/^.*\* ([^ ]+) \(aka ([^\)]+).*$/c=\1;a=\2/p; s/^.*\* ([^ ]+) *$/c=\1;a=""/p'
-for vals in $(kubectl get 2>&1 | sed -nE "$str"); do
+lines=($(kubectl get 2>&1 | sed -nE "$str"))
+if [[ ${#lines[@]} -eq 0 ]]; then
+    # newer versions of kubectl have an new command for the list of available resources
+    str='NR==1{i=index($0,"SHORTNAMES")}; NR>1{a=substr($0,i,1);if(a!=" "){a=$2};print "c="$1";a="a}'
+    lines=($(kubectl api-resources --cached=true | awk "$str"))
+fi
+for vals in "${lines[@]}"; do
     eval "$vals"
+    a=${a/%,*/} # use only first option in a comma list
     [[ "$a" = 'deploy' ]] && a='dep'
     [[ "$a" = 'limits' ]] && a='lim'
     [[ "$a" = 'netpol' ]] && a='net'
@@ -786,7 +793,7 @@ for vals in $(kubectl get 2>&1 | sed -nE "$str"); do
     _KGCMDS_AKA+=("${a:-$c}")
     _KGCMDS_HELP+=$(printf '    %-8s get %s' "$a" "$c")$'\n'
 done
-unset str vals c a
+unset str lines vals c a
 
 ku reset -q
 
@@ -799,7 +806,7 @@ Shortyk8s has been added to ${HOME}/.bash_profile.
 
 Now reload your environment like this:
 
-  $ . "${HOME}/.bash_profile"
+  $ source "${HOME}/.bash_profile"
 
 And then try this to show the current kubectl configuration contexts:
 
@@ -811,7 +818,7 @@ EOF
 
 Shortyk8s is meant to be source'd into your environment. You can try it out temporarily like this:
 
-  $ . "$0"
+  $ source "$0"
 
 However, if you'd like it to updatable and ready in all future terminals, you can do this:
 
@@ -820,4 +827,7 @@ However, if you'd like it to updatable and ready in all future terminals, you ca
 EOF
         exit 1
     fi
+elif [[ "$0" = "bash" && "$1" == 'install' ]]; then
+    # invoked from curl piped to bash (README instructions)
+    kupdate --install
 fi
