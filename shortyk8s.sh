@@ -64,11 +64,11 @@ EOF
         return 1
     fi
 
-    local a pod res caret atsign nc=false cmd=$_KUBECTL args=()
+    local a pod res caret atsign nc=false cmd=_kubectl args=()
 
     if [[ " $@ " = ' all ' ]]; then
         # simple request to get all resources
-        ${_KUBECTL} get all
+        _kubectl get all
         return
     fi
 
@@ -82,10 +82,7 @@ EOF
                 fi
                 args+=(apply --filename="$1"); shift
                 ;;
-            any|all)
-                [[ -n "${_K8S_NS}" ]] && cmd=${cmd%% -n*} # remove namespace from cmd (session)
-                args+=(--all-namespaces)
-                ;;
+            any|all) args+=(--all-namespaces);;
             ap)
                 kallpods "$@" | _kcolorize
                 return
@@ -129,8 +126,8 @@ EOF
             u) ku "$@"; return;;
             w) nc=true; args+=(-owide);;
             y) nc=true; args+=(-oyaml);;
-            ,*) args+=($(knamegrep nodes "${a:1}"));;
-            .*) args+=($(knamegrep pods "${a:1}"));;
+            ,*) args+=($(_knamegrep nodes "${a:1}"));;
+            .*) args+=($(_knamegrep pods "${a:1}"));;
             ^*) caret="$a";;
             @*) atsign="$a";;
             ~*)
@@ -169,8 +166,15 @@ EOF
         fmtr='cat'
     fi
 
-    [[ " ${args[@]} " =~ ' delete ' ]]
-    _kechorun $? "$cmd" "${args[@]}" | $fmtr
+    if [[ " ${args[@]} " =~ ' delete ' ]]; then
+        read -r -p 'Are you sure? [y/N] ' res
+        case "$res" in
+            [yY][eE][sS]|[yY]) : ;;
+            *) return 11
+        esac
+    fi
+
+    "$cmd" "${args[@]}" | $fmtr
 }
 
 # report brief info for display in a prompt
@@ -200,7 +204,7 @@ EOF
         return 1
     fi
 
-    for ctx in $(kctxgrep "${args[@]}"); do
+    for ctx in $(_kctxgrep "${args[@]}"); do
         eval "$@"
     done
 }
@@ -218,8 +222,7 @@ function kctx()
 # list all internal node IPs
 function knodeips()
 {
-    _kechorun 1 "${_KUBECTL}" get nodes \
-        -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'
+    _kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'
 }
 
 # run a command on each node async
@@ -309,7 +312,6 @@ function ku()
 
     if [[ "$1" = 'reset' ]]; then
         unset _K8S_CTX _K8S_NS
-        _KUBECTL='kubectl'
         [[ "$2" = '-q' ]] || ku
         return
     fi
@@ -323,9 +325,9 @@ function ku()
 
     if [[ $# -eq 1 ]]; then
         # try namespace match first, then context
-        ns=$(knamegrep ns -m1 "$1")
+        ns=$(_knamegrep ns -m1 "$1")
         if [[ -z "${ns}" ]]; then
-            ctx=$(kctxgrep -m1 "$1")
+            ctx=$(_kctxgrep -m1 "$1")
             if [[ -z "${ctx}" ]]; then
                 echo 'no match found' >&2
                 return 2
@@ -336,7 +338,7 @@ function ku()
         fi
     elif [[ $# -eq 2 ]]; then
         # switch to context and namespace
-        ctx=$(kctxgrep -m1 "$1")
+        ctx=$(_kctxgrep -m1 "$1")
         if [[ -z "$ctx" ]]; then
             echo 'no match found' >&2
             return 3
@@ -354,7 +356,6 @@ function ku()
     if $session; then
         _K8S_CTX=$ctx
         _K8S_NS=$ns
-        _KUBECTL="kubectl --context ${_K8S_CTX} -n ${_K8S_NS}"
         echo "Temporarily switching to context \"${_K8S_CTX}\" using namespace \"${_K8S_NS}\""
     else
         ku reset -q
@@ -364,35 +365,6 @@ function ku()
     fi
 
     ku
-}
-
-# list matching context names
-function kctxgrep()
-{
-    if [[ $# -lt 1 ]]; then
-        echo 'usage: kctxgrep <egrep_args>...' >&2
-        return 1
-    fi
-    kubectl config get-contexts -oname | egrep "$@"
-}
-
-# list matching pod names
-function knamegrep()
-{
-    if [[ $# -lt 2 ]]; then
-        echo 'usage: knamegrep <resource> <egrep_args>...' >&2
-        return 1
-    fi
-    local res=$1; shift
-    $_KUBECTL get $knames $res | egrep "$@"
-}
-
-# list matching container names for a given pod
-function kcongrep()
-{
-    local pod=$1; shift
-    $_KUBECTL get pod "${pod}" -oyaml -o'jsonpath={.spec.containers[*].name}' \
-        | tr ' ' '\n' | egrep "$@"
 }
 
 # execute an interactive REPL on a container
@@ -447,7 +419,7 @@ EOF
     fi
 
     e_args+=(-- sh -c "KREPL=${USER};TERM=xterm;PS1=\"\$(hostname -s) $ \";export TERM PS1;${cmd}")
-    _kechorun 1 "${_KUBECTL}" "${e_args[@]}"
+    _kubectl "${e_args[@]}"
 }
 
 # run commands on one or more containers
@@ -513,8 +485,9 @@ EOF
     $verbose && x_args+=(-t)
     $async && x_args+=(-P ${#pods[@]})
 
+    _KNOOP=true _kubectl
     xargs "${x_args[@]}" -I'{}' -n1 -- \
-          ${_KUBECTL} exec "${e_args[@]}" -- sh -c "${cmd}" <<< "${pods[@]}"
+          $_KUBECTL exec "${e_args[@]}" -- sh -c "${cmd}" <<< "${pods[@]}"
 }
 
 # watch events and pods concurrently (good for monitoring a deployment's progress)
@@ -539,8 +512,8 @@ function kevw()
     local args=(get ev --no-headers --sort-by=.lastTimestamp \
         -ocustom-columns='TIMESTAMP:.lastTimestamp,COUNT:.count,KIND:.involvedObject.kind,'`
                         `'NAME:.involvedObject.name,MESSAGE:.message' "$@")
-    $new || _kechorun 1 "${_KUBECTL}" "${args[@]}"
-    _kechorun 1 "${_KUBECTL}" "${args[@]}" --watch-only
+    $new || _kubectl "${args[@]}"
+    _kubectl "${args[@]}" --watch-only
 }
 
 # report all pods grouped by nodes
@@ -554,7 +527,7 @@ function kallpods()
     [[ $# -gt 1 ]] && match+=' && $1 ~ /'"$2"'/'
     [[ $# -gt 2 ]] && match+=' && $2 ~ /'"$3"'/'
     # sort by node then by namespace then by name
-    $_KUBECTL get --all-namespaces pods -owide | \
+    _kubectl get --all-namespaces pods -owide | \
         awk 'NR==1{print;next};'"${match}"'{print|"sort -b -k8 -k1 -k2"}' | \
         awk 'NR==1{print;next};{ x[$8]++; if (x[$8] == 1) print "---"; print}'
 }
@@ -565,11 +538,11 @@ function kall()
     local rsc res ns=$(kns)
     local ign='all|events|clusterroles|clusterrolebindings|customresourcedefinition|namespaces|'`
              `'nodes|persistentvolumeclaims|storageclasses'
-    for rsc in $($_KUBECTL get 2>&1 | awk '/^  \* /{if (!($2 ~ /^('"${ign}"')$/)) print $2}'); do
+    for rsc in $(_kubectl get 2>&1 | awk '/^  \* /{if (!($2 ~ /^('"${ign}"')$/)) print $2}'); do
         if [[ "${rsc}" = 'persistentvolumes' ]]; then
-            res=$($_KUBECTL get "${rsc}" | awk 'NR==1{print};$6 ~ /^'"${ns}"'/{print}')
+            res=$(_kubectl get "${rsc}" | awk 'NR==1{print};$6 ~ /^'"${ns}"'/{print}')
         else
-            res=$($_KUBECTL get "${rsc}" 2>&1)
+            res=$(_kubectl get "${rsc}" 2>&1)
         fi
         [[ $? -eq 0 ]] || continue
         [[ $(echo "$res" | wc -l ) -lt 2 ]] && continue
@@ -637,7 +610,7 @@ NR == 1 {
 
 NR > 1 {
     if (status_col > 0) {
-        if (match($status_col, /Disabled|Pending/)) {
+        if (match($status_col, /Disabled|Pending|Init/)) {
             $status_col = WN $status_col NM
         } else if (match($status_col, /Running|Ready|Active|Succeeded/)) {
             $status_col = OK $status_col NM
@@ -672,22 +645,6 @@ function _kcolorize()
     else
         awk "${_KCOLORIZE}" | column -xt
     fi
-}
-
-# internal helper to echo a command to stderr, optionally get confirmation, and then run
-function _kechorun()
-{
-    local confirm=$1; shift
-    local cmd=$1; shift
-    echo "${cmd}$(printf ' %q' "$@")" >&2
-    if [[ $confirm -eq 0 ]]; then
-        read -r -p 'Are you sure? [y/N] ' res
-        case "$res" in
-            [yY][eE][sS]|[yY]) : ;;
-            *) return 11
-        esac
-    fi
-    $cmd "$@"
 }
 
 # internal helper to show contexts without the first column, indicating session changes, optionally
@@ -726,7 +683,7 @@ function _kgetpodcon()
     pod_match="${pod_match_a[0]}"
 
     # expose the `pods` array to caller
-    pods=($(knamegrep pods "${grep_args[@]}" "${pod_match}"))
+    pods=($(_knamegrep pods "${grep_args[@]}" "${pod_match}"))
     if [[ ${#pods[@]} -lt 1 ]]; then
         echo 'no match found' >&2
         return 11
@@ -734,7 +691,7 @@ function _kgetpodcon()
 
     if [[ "${container_match::1}" = '@' ]]; then
         # expose the `con` value to caller
-        con="$(kcongrep "${pods[0]}" -m1 "${container_match:1}")"
+        con="$(_kcongrep "${pods[0]}" -m1 "${container_match:1}")"
         if [[ -z "${con}" ]]; then
             echo 'no match found' >&2
             return 22
@@ -743,7 +700,7 @@ function _kgetpodcon()
         cnt=2
     else
         # try finding a matching container based on the first pod
-        con="$(kcongrep "${pods[0]}" -m1 "${pod_match%%-*}")"
+        con="$(_kcongrep "${pods[0]}" -m1 "${pod_match%%-*}")"
         cnt=1
     fi
 
@@ -755,6 +712,27 @@ function _kgetpodcon()
             pods+=("${pod}:${pod_match_a[1]}")
         done
     fi
+}
+
+# internal helper to list matching context names
+function _kctxgrep()
+{
+    kubectl config get-contexts -oname | egrep "$@"
+}
+
+# internal helper to list matching pod names
+function _knamegrep()
+{
+    local res=$1; shift
+    _KQUIET=true _kubectl get $knames $res | egrep "$@"
+}
+
+# internal helper to list matching container names for a given pod
+function _kcongrep()
+{
+    local pod=$1; shift
+    _KQUIET=true _kubectl get pod "${pod}" -oyaml -o'jsonpath={.spec.containers[*].name}' \
+        | tr ' ' '\n' | egrep "$@"
 }
 
 # internal helper to provide get unless another action has already been requested
@@ -771,6 +749,26 @@ function _kget()
     else
         args+=(get "$@")
     fi
+}
+
+_KNOOP=false
+_KQUIET=false
+# internal helper to build a kubectl command line (setting context/namespace when appropriate)
+function _kubectl()
+{
+    local args=("$@")
+    if [[ ! " ${args[@]} " =~ ' --context' ]]; then
+        if [[ ! " ${args[@]} " =~ ' --namespace' && \
+                  ! " ${args[@]} " =~ ' -n ' && \
+                  ! " ${args[@]} " =~ ' --all-namespaces ' ]]; then
+            [[ -n "${_K8S_NS}" ]] && args=(-n "${_K8S_NS}" "${args[@]}")
+        fi
+        [[ -n "${_K8S_CTX}" ]] && args=(--context "${_K8S_CTX}" "${args[@]}")
+    fi
+    _KUBECTL="kubectl$(printf ' %q' "${args[@]}")"
+    $_KNOOP && return
+    $_KQUIET || echo "${_KUBECTL}" >&2
+    kubectl "${args[@]}"
 }
 
 # preload the list of known kubectl get commands

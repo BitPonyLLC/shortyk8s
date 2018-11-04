@@ -36,6 +36,11 @@ $ curl https://raw.githubusercontent.com/bradrf/shortyk8s/master/shortyk8s.sh | 
 $ source ~/.bash_profile
 ```
 
+*Note:* Always read through scripts before executing them! In the above case, shortyk8s'
+`kupdate --install` function will be invoked by the bottom portion of the script:
+
+  * https://raw.githubusercontent.com/bradrf/shortyk8s/master/shortyk8s.sh
+
 To get the latest version of shortyk8s, it provides a helper to automate that process for you:
 
 ``` shell
