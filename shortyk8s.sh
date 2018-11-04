@@ -65,6 +65,7 @@ EOF
     fi
 
     local a pod res caret atsign nc=false cmd=_kubectl args=()
+    local orig_ctx=$_K8S_CTX orig_ns=$_K8S_NS revert_ctx=false revert_ns=false
 
     if [[ " $@ " = ' all ' ]]; then
         # simple request to get all resources
@@ -134,6 +135,18 @@ EOF
                 cmd=${a:1}
                 args+=(--context "$(kctx)" -n "$(kns)")
                 ;;
+            --context)
+                _K8S_CTX=$1
+                $revert_ns || _K8S_NS=''
+                revert_ctx=true
+                shift
+                ;;
+            -n|--namespace)
+                _K8S_NS=$1
+                $revert_ctx || K8S_CTX=''
+                revert_ns=true
+                shift
+                ;;
             -w|-h*|-o*)
                 args+=($a)
                 nc=true
@@ -175,6 +188,10 @@ EOF
     fi
 
     "$cmd" "${args[@]}" | $fmtr
+    local rc=$?
+    $revert_ctx && _K8S_CTX=$orig_ctx
+    $revert_ns && _K8S_NS=$orig_ns
+    return $rc
 }
 
 # report brief info for display in a prompt
