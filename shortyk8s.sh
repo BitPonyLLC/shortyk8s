@@ -167,7 +167,9 @@ EOF
     if [[ -n "${caret}" ]]; then
         _kgetpodcon "${caret}" "${atsign}" -m1 || return $?
         args+=("${pods[0]}")
-        [[ -n "${con}" ]] && args+=(-c "${con}")
+        if [[ -n "${con}" && ! " ${args[@]} " =~ ' delete ' ]]; then
+            args+=(-c "${con}")
+        fi
     fi
 
     local fmtr argstr=" ${args[@]} "
@@ -179,18 +181,15 @@ EOF
         fmtr='cat'
     fi
 
-    if [[ " ${args[@]} " =~ ' delete ' ]]; then
-        read -r -p 'Are you sure? [y/N] ' res
-        case "$res" in
-            [yY][eE][sS]|[yY]) : ;;
-            *) return 11
-        esac
-    fi
+    local confirm=false
+    [[ " ${args[@]} " =~ ' delete ' ]] && confirm=true
 
-    "$cmd" "${args[@]}" | $fmtr
+    _KCONFIRM=$confirm "$cmd" "${args[@]}" | $fmtr
     local rc=$?
+
     $revert_ctx && _K8S_CTX=$orig_ctx
     $revert_ns && _K8S_NS=$orig_ns
+
     return $rc
 }
 
@@ -770,6 +769,7 @@ function _kget()
 
 _KNOOP=false
 _KQUIET=false
+_KCONFIRM=false
 # internal helper to build a kubectl command line (setting context/namespace when appropriate)
 function _kubectl()
 {
@@ -785,6 +785,13 @@ function _kubectl()
     _KUBECTL="kubectl$(printf ' %q' "${args[@]}")"
     $_KNOOP && return
     $_KQUIET || echo "${_KUBECTL}" >&2
+    if $_KCONFIRM; then
+        read -r -p 'Are you sure? [y/N] ' res
+        case "$res" in
+            [yY][eE][sS]|[yY]) : ;;
+            *) return 11
+        esac
+    fi
     kubectl "${args[@]}"
 }
 
