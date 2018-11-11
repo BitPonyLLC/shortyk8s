@@ -125,7 +125,7 @@ EOF
             tn) args+=(top node);;
             tp) args+=(top pod --containers);;
             u) ku "$@"; return;;
-            w) nc=true; args+=(-owide);;
+            w) args+=(-owide);;
             y) nc=true; args+=(-oyaml);;
             ,*) args+=($(_knamegrep nodes "${a:1}"));;
             .*) args+=($(_knamegrep pods "${a:1}"));;
