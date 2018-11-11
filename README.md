@@ -14,9 +14,11 @@ GNU-based options (i.e. should work on BSD flavors like OS X just as well as Ubu
 * [Preview](#preview)
 * [Installing and Updating](#installing-and-updating)
 * [Working with Contexts and Namespaces](#working-with-contexts-and-namespaces)
+   * [Set Independent Context Terminal Sessions](#set-independent-context-terminal-sessions)
 * [Working with Nodes and Pods](#working-with-nodes-and-pods)
    * [Executing Remote Actions](#executing-remote-actions)
 * [Watching Events](#watching-events)
+* [Executing Other Kubernetes Applications](#executing-other-kubernetes-applications)
 * [Shell Prompt](#shell-prompt)
 * [Everything Else](#everything-else)
 
