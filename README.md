@@ -238,8 +238,8 @@ running against the current context selected by shortyk8s--especially when using
 sessions](#working-with-contexts-and-namespaces)--run it from shortk8s' tilde marker:
 
 ``` shell
-$ k ~stern .job --tail 5
-stern --context production -n web --tail 1
+$ k ~stern job --tail 5
+stern --context production -n web job --tail 1
 ...
 ```
 
