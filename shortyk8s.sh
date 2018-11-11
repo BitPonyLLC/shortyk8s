@@ -133,7 +133,10 @@ EOF
             @*) atsign="$a";;
             ~*)
                 cmd=${a:1}
-                args+=(--context "$(kctx)" -n "$(kns)")
+                case "$cmd" in
+                    helm) args+=(--kube-context "$(kctx)") ;;
+                    *) args+=(--context "$(kctx)" -n "$(kns)")
+                esac
                 ;;
             --context)
                 _K8S_CTX=$1

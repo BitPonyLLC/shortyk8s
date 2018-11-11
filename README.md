@@ -236,7 +236,22 @@ running against the current context selected by shortyk8s--especially when using
 sessions](#working-with-contexts-and-namespaces)--run it from shortk8s' tilde marker:
 
 ``` shell
-$ k ~stern job --tail 5
+$ k ~stern .job --tail 5
+stern --context production -n web --tail 1
+...
+```
+
+Notice that shortk8s is running the [stern](https://github.com/wercker/stern) logging helper with
+the currently configured context and namespace. This expansion _assumes_ that the called application
+supports these options (`--context` and `-n`). If you come across a tool that has different options,
+please open an issue and we'll add special handling. For example, shortk8s already does this for
+invoking [helm](https://github.com/helm/helm):
+
+``` shell
+$ k ~helm list
+helm --kube-context production list
+NAME                            REVISION        UPDATED                         STATUS          CHART                                   APP VERSION     NAMESPACE
+cluster-bootstrap               11              Fri Nov  9 16:18:13 2018        DEPLOYED        kubernetes-addons-0.1.11                1.0             default
 ```
 
 ---
