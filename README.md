@@ -86,7 +86,7 @@ $ k u database
 ### Set Independent Context Terminal Sessions
 
 When working with several contexts, it's often frustrating to be constantly switching back and forth
-or, worse, remembering to set the context option for each call. Shortk8s simplifies this by allowing
+or, worse, remembering to set the context option for each call. Shortyk8s simplifies this by allowing
 you to leverage temporary "sessions" to switch the context only in the current terminal (without
 affecting other terminals or shells). All `k` invocations will honor the current context and will
 ensure the kubectl command is using the right cluster:
@@ -235,7 +235,7 @@ names-bcc8779b4-k8nlb names Running 0 192.168.65.3
 
 There are a lot of excellent tools to assist with a Kubernetes cluster. To ensure the tool is
 running against the current context selected by shortyk8s--especially when using [temporary
-sessions](#working-with-contexts-and-namespaces)--run it from shortk8s' tilde marker:
+sessions](#working-with-contexts-and-namespaces)--run it from shortyk8s' tilde marker:
 
 ``` shell
 $ k ~stern job --tail 5
@@ -243,11 +243,12 @@ stern --context production -n web job --tail 1
 ...
 ```
 
-Notice that shortk8s is running the [stern](https://github.com/wercker/stern) logging helper with
+Notice that shortyk8s is running the [stern](https://github.com/wercker/stern) logging helper with
 the currently configured context and namespace. This expansion _assumes_ that the called application
 supports these options (`--context` and `-n`). If you come across a tool that has different options,
-please open an issue and we'll add special handling. For example, shortk8s already does this for
-invoking [helm](https://github.com/helm/helm):
+please [open an issue](https://github.com/bradrf/shortyk8s/issues/new) and we'll add special
+handling. For example, shortyk8s already does this for invoking
+[helm](https://github.com/helm/helm):
 
 ``` shell
 $ k ~helm list
