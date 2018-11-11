@@ -64,12 +64,12 @@ EOF
         return 1
     fi
 
-    local a pod res caret atsign nc=false cmd=_kubectl args=()
+    local a pod res caret atsign nc=false cmd=kubectl args=()
     local orig_ctx=$_K8S_CTX orig_ns=$_K8S_NS revert_ctx=false revert_ns=false
 
     if [[ " $@ " = ' all ' ]]; then
         # simple request to get all resources
-        _kubectl get all
+        _kcmd kubectl get all
         return
     fi
 
@@ -177,14 +177,16 @@ EOF
         # stdout is a tty and using a simple get...
         fmtr='_kcolorize'
         $nc && fmtr+=' -nc'
-    else
-        fmtr='cat'
     fi
 
     local confirm=false
     [[ " ${args[@]} " =~ ' delete ' ]] && confirm=true
 
-    _KCONFIRM=$confirm "$cmd" "${args[@]}" | $fmtr
+    if [[ -n "$fmtr" ]]; then
+        _KCONFIRM=$confirm _kcmd "$cmd" "${args[@]}" | $fmtr
+    else
+        _KCONFIRM=$confirm _kcmd "$cmd" "${args[@]}"
+    fi
     local rc=$?
 
     $revert_ctx && _K8S_CTX=$orig_ctx
@@ -238,7 +240,7 @@ function kctx()
 # list all internal node IPs
 function knodeips()
 {
-    _kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'
+    _kcmd kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'
 }
 
 # run a command on each node async
@@ -435,7 +437,7 @@ EOF
     fi
 
     e_args+=(-- sh -c "KREPL=${USER};TERM=xterm;PS1=\"\$(hostname -s) $ \";export TERM PS1;${cmd}")
-    _kubectl "${e_args[@]}"
+    _kcmd kubectl "${e_args[@]}"
 }
 
 # run commands on one or more containers
@@ -501,9 +503,9 @@ EOF
     $verbose && x_args+=(-t)
     $async && x_args+=(-P ${#pods[@]})
 
-    _KNOOP=true _kubectl
+    _KNOOP=true _kcmd kubectl
     xargs "${x_args[@]}" -I'{}' -n1 -- \
-          $_KUBECTL exec "${e_args[@]}" -- sh -c "${cmd}" <<< "${pods[@]}"
+          $_KCMD exec "${e_args[@]}" -- sh -c "${cmd}" <<< "${pods[@]}"
 }
 
 # watch events and pods concurrently (good for monitoring a deployment's progress)
@@ -528,8 +530,8 @@ function kevw()
     local args=(get ev --no-headers --sort-by=.lastTimestamp \
         -ocustom-columns='TIMESTAMP:.lastTimestamp,COUNT:.count,KIND:.involvedObject.kind,'`
                         `'NAME:.involvedObject.name,MESSAGE:.message' "$@")
-    $new || _kubectl "${args[@]}"
-    _kubectl "${args[@]}" --watch-only
+    $new || _kcmd kubectl "${args[@]}"
+    _kcmd kubectl "${args[@]}" --watch-only
 }
 
 # report all pods grouped by nodes
@@ -543,7 +545,7 @@ function kallpods()
     [[ $# -gt 1 ]] && match+=' && $1 ~ /'"$2"'/'
     [[ $# -gt 2 ]] && match+=' && $2 ~ /'"$3"'/'
     # sort by node then by namespace then by name
-    _kubectl get --all-namespaces pods -owide | \
+    _kcmd kubectl get --all-namespaces pods -owide | \
         awk 'NR==1{print;next};'"${match}"'{print|"sort -b -k8 -k1 -k2"}' | \
         awk 'NR==1{print;next};{ x[$8]++; if (x[$8] == 1) print "---"; print}'
 }
@@ -554,11 +556,11 @@ function kall()
     local rsc res ns=$(kns)
     local ign='all|events|clusterroles|clusterrolebindings|customresourcedefinition|namespaces|'`
              `'nodes|persistentvolumeclaims|storageclasses'
-    for rsc in $(_kubectl get 2>&1 | awk '/^  \* /{if (!($2 ~ /^('"${ign}"')$/)) print $2}'); do
+    for rsc in $(_kcmd kubectl get 2>&1 | awk '/^  \* /{if (!($2 ~ /^('"${ign}"')$/)) print $2}'); do
         if [[ "${rsc}" = 'persistentvolumes' ]]; then
-            res=$(_kubectl get "${rsc}" | awk 'NR==1{print};$6 ~ /^'"${ns}"'/{print}')
+            res=$(_kcmd kubectl get "${rsc}" | awk 'NR==1{print};$6 ~ /^'"${ns}"'/{print}')
         else
-            res=$(_kubectl get "${rsc}" 2>&1)
+            res=$(_kcmd kubectl get "${rsc}" 2>&1)
         fi
         [[ $? -eq 0 ]] || continue
         [[ $(echo "$res" | wc -l ) -lt 2 ]] && continue
@@ -740,14 +742,14 @@ function _kctxgrep()
 function _knamegrep()
 {
     local res=$1; shift
-    _KQUIET=true _kubectl get $knames $res | egrep "$@"
+    _KQUIET=true _kcmd kubectl get $knames $res | egrep "$@"
 }
 
 # internal helper to list matching container names for a given pod
 function _kcongrep()
 {
     local pod=$1; shift
-    _KQUIET=true _kubectl get pod "${pod}" -oyaml -o'jsonpath={.spec.containers[*].name}' \
+    _KQUIET=true _kcmd kubectl get pod "${pod}" -oyaml -o'jsonpath={.spec.containers[*].name}' \
         | tr ' ' '\n' | egrep "$@"
 }
 
@@ -770,10 +772,12 @@ function _kget()
 _KNOOP=false
 _KQUIET=false
 _KCONFIRM=false
-# internal helper to build a kubectl command line (setting context/namespace when appropriate)
-function _kubectl()
+# internal helper to build a command line (setting context/namespace when appropriate)
+function _kcmd()
 {
+    local cmd=$1; shift
     local args=("$@")
+
     if [[ ! " ${args[@]} " =~ ' --context' ]]; then
         if [[ ! " ${args[@]} " =~ ' --namespace' && \
                   ! " ${args[@]} " =~ ' -n ' && \
@@ -782,9 +786,16 @@ function _kubectl()
         fi
         [[ -n "${_K8S_CTX}" ]] && args=(--context "${_K8S_CTX}" "${args[@]}")
     fi
-    _KUBECTL="kubectl$(printf ' %q' "${args[@]}")"
+
+    if [[ ${#args[@]} -gt 0 ]]; then
+        _KCMD="${cmd}$(printf ' %q' "${args[@]}")"
+    else
+        _KCMD=$cmd
+    fi
+
     $_KNOOP && return
-    $_KQUIET || echo "${_KUBECTL}" >&2
+    $_KQUIET || echo "${_KCMD}" >&2
+
     if $_KCONFIRM; then
         read -r -p 'Are you sure? [y/N] ' res
         case "$res" in
@@ -792,7 +803,8 @@ function _kubectl()
             *) return 11
         esac
     fi
-    kubectl "${args[@]}"
+
+    "$cmd" "${args[@]}"
 }
 
 # preload the list of known kubectl get commands

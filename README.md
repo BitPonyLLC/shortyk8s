@@ -7,8 +7,9 @@ _**<groan!>**_
 
 Shortyk8s provides simplified kubectl command lines through abbreviations and expansions of
 containers, pods, nodes, namespaces, and contexts. Most commands shortyk8s builds up are reported to
-help you understand the full kubectl command being executed. Watch the preview to get a sense for
-what it can do.
+help you understand the full kubectl command being executed. The guiding premise is that it should
+only require the most basic of Unix tooling (e.g. bash, awk, sed, tr, etc.) and should not rely on
+GNU-based options (i.e. should work on BSD flavors like OS X just as well as Ubuntu).
 
 * [Preview](#preview)
 * [Installing and Updating](#installing-and-updating)
@@ -80,8 +81,13 @@ $ k u database
 *  prod-usw1   prod-usw1   prod-usw1   database
 ```
 
-Leverage temporary "sessions" to switch the context only in the current terminal (without affecting
-other terminals or shells):
+### Set Independent Context Terminal Sessions
+
+When working with several contexts, it's often frustrating to be constantly switching back and forth
+or, worse, remembering to set the context option for each call. Shortk8s simplifies this by allowing
+you to leverage temporary "sessions" to switch the context only in the current terminal (without
+affecting other terminals or shells). All `k` invocations will honor the current context and will
+ensure the kubectl command is using the right cluster:
 
 ``` shell
 $ k u -s eu api
@@ -183,6 +189,7 @@ names-bcc8779b4-g9wv2:     inet 10.1.0.54/16 scope global eth0
 names-bcc8779b4-g9wv2:        valid_lft forever preferred_lft forever
 ```
 
+---
 ## Watching Events
 
 Kubernetes events can be a critical resource to help uncover why something changed or isn't working
@@ -221,6 +228,18 @@ names-bcc8779b4-k8nlb names Running 0 192.168.65.3
 >>> Sun Oct 28 10:57:28 PDT 2018 <<<
 ```
 
+---
+## Executing Other Kubernetes Applications
+
+There are a lot of excellent tools to assist with a Kubernetes cluster. To ensure the tool is
+running against the current context selected by shortyk8s--especially when using [temporary
+sessions](#working-with-contexts-and-namespaces)--run it from shortk8s' tilde marker:
+
+``` shell
+$ k ~stern job --tail 5
+```
+
+---
 ## Shell Prompt
 
 When working with many different kubernetes clusters, it's helpful to always represent the current
