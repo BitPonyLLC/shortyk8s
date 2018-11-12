@@ -51,7 +51,7 @@ ${_KCMDS_HELP}
     ^<pod_match>        replace with FIRST matching pod
     @<container_match>  replace with FIRST matching container in pod (requires ^<pod_match>)
     ,<node_match>       replace with matching nodes
-    ~<alt_command>      replace \`kubectl\` with \`<alt_command> --context \$(shortyk8s_ctx) -n \$(shortyk8s_kns)\`
+    ~<alt_command>      replace \`kubectl\` with \`<alt_command> --context $(shortyk8s_ctx) -n $(shortyk8s_kns)\`
 
   Examples:
 
@@ -68,7 +68,7 @@ EOF
     fi
 
     local a c pod res caret atsign nc=false cmd=kubectl args=()
-    local orig_ctx=$_K8S_CTX orig_ns=$_K8S_NS revert_ctx=false revert_ns=false quiet=false
+    local orig_ctx=$_K8S_CTX orig_ns=$_K8S_NS revert_ctx=false revert_ns=false
 
     if [[ " $@ " = ' all ' ]]; then
         # simple request to get all resources
@@ -194,9 +194,9 @@ EOF
     [[ " ${args[@]} " =~ ' delete ' || " ${args[@]} " =~ ' scale ' ]] && confirm=true
 
     if [[ -n "$fmtr" ]]; then
-        _KCONFIRM=$confirm _KQUIET=$quiet _kcmd "$cmd" "${args[@]}" | $fmtr
+        _KCONFIRM=$confirm _kcmd "$cmd" "${args[@]}" | $fmtr
     else
-        _KCONFIRM=$confirm _KQUIET=$quiet _kcmd "$cmd" "${args[@]}"
+        _KCONFIRM=$confirm _kcmd "$cmd" "${args[@]}"
     fi
     local rc=$?
 
