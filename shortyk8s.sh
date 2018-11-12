@@ -50,7 +50,7 @@ ${_KCMDS_HELP}
     ^<pod_match>        replace with FIRST matching pod
     @<container_match>  replace with FIRST matching container in pod (requires ^<pod_match>)
     ,<node_match>       replace with matching nodes
-    ~<alt_command>      replace \`kubectl\` with \`<alt_command> --context \$(shortyk8s_ctx) -n \$(shortyk8s_ns)\`
+    ~<alt_command>      replace \`kubectl\` with \`<alt_command> --context \$(shortyk8s_ctx) -n \$(shortyk8s_kns)\`
 
   Examples:
 
@@ -129,7 +129,7 @@ EOF
                 cmd=${a:1}
                 case "$cmd" in
                     helm) args+=(--kube-context "$(shortyk8s_ctx)") ;;
-                    *) args+=(--context "$(shortyk8s_ctx)" -n "$(shortyk8s_ns)")
+                    *) args+=(--context "$(shortyk8s_ctx)" -n "$(shortyk8s_kns)")
                 esac
                 ;;
             --context)
@@ -265,57 +265,6 @@ function shortyk8s_df()
 
 _KPUB+=('')
 
-_KPUB+=('a=prompt;c=shortyk8s_prompt;d="provide info for shell prompt"')
-function shortyk8s_prompt()
-{
-    if [[ -z "$_K8S_CTX" ]]; then
-        echo "$*$(shortyk8s_ctx)/$(shortyk8s_ns)"
-    else
-        echo "$*$(shortyk8s_ctx)/$(shortyk8s_ns)[tmp]"
-    fi
-}
-
-_KPUB+=('a=eachctx;c=shortyk8s_eachctx;d="list all interesting context names"')
-function shortyk8s_eachctx()
-{
-    local args=(.) ctx
-    if [[ "$1" = '-m' ]]; then
-        shift; args=("$1"); shift
-    fi
-
-    if [[ $# -lt 1 ]]; then
-        cat <<EOF >&2
-usage: eachctx [-m <ctx_match>] <command> [<arg> ....]
-[ NOTE: command is eval'd with a \$ctx variable available ]
-EOF
-        return 1
-    fi
-
-    for ctx in $(_kctxgrep "${args[@]}"); do
-        eval "$@"
-    done
-}
-
-_KPUB+=('a=ctx;c=shortyk8s_ctx;d="report current context"')
-function shortyk8s_ctx()
-{
-    if [[ -n "${_K8S_CTX}" ]]; then
-        echo "${_K8S_CTX}"
-    else
-        kubectl config current-context
-    fi
-}
-
-_KPUB+=('a=ns;c=shortyk8s_ns;d="report current namespace"')
-function shortyk8s_ns()
-{
-    if [[ -n "${_K8S_NS}" ]]; then
-        echo "${_K8S_NS}"
-    else
-        kubectl config get-contexts | awk '$1 == "*" {print $5}'
-    fi
-}
-
 _KPUB+=('a=u;c=shortyk8s_use;d="use a different context and/or namespace"')
 function shortyk8s_use()
 {
@@ -379,13 +328,64 @@ function shortyk8s_use()
         _K8S_NS=$ns
         echo "Temporarily switching to context \"${_K8S_CTX}\" using namespace \"${_K8S_NS}\""
     else
-        ku reset -q
+        shortyk8s_use reset -q
         kubectl config set-context "$ctx" --namespace "$ns" | \
             sed 's/\.$/ using namespace "'"${ns}"'"./'
         kubectl config use-context "$ctx"
     fi
 
     shortyk8s_use
+}
+
+_KPUB+=('a=prompt;c=shortyk8s_prompt;d="provide info for shell prompt"')
+function shortyk8s_prompt()
+{
+    if [[ -z "$_K8S_CTX" ]]; then
+        echo "$*$(shortyk8s_ctx)/$(shortyk8s_kns)"
+    else
+        echo "$*$(shortyk8s_ctx)/$(shortyk8s_kns)[tmp]"
+    fi
+}
+
+_KPUB+=('a=ctx;c=shortyk8s_ctx;d="report current context"')
+function shortyk8s_ctx()
+{
+    if [[ -n "${_K8S_CTX}" ]]; then
+        echo "${_K8S_CTX}"
+    else
+        kubectl config current-context
+    fi
+}
+
+_KPUB+=('a=kns;c=shortyk8s_kns;d="report current namespace"')
+function shortyk8s_kns()
+{
+    if [[ -n "${_K8S_NS}" ]]; then
+        echo "${_K8S_NS}"
+    else
+        kubectl config get-contexts | awk '$1 == "*" {print $5}'
+    fi
+}
+
+_KPUB+=('a=eachctx;c=shortyk8s_eachctx;d="invoke action for matching context names"')
+function shortyk8s_eachctx()
+{
+    local args=(.) ctx
+    if [[ "$1" = '-m' ]]; then
+        shift; args=("$1"); shift
+    fi
+
+    if [[ $# -lt 1 ]]; then
+        cat <<EOF >&2
+usage: eachctx [-m <ctx_match>] <command> [<arg> ....]
+[ NOTE: command is eval'd with a \$ctx variable available ]
+EOF
+        return 1
+    fi
+
+    for ctx in $(_kctxgrep "${args[@]}"); do
+        eval "$@"
+    done
 }
 
 _KPUB+=('')
@@ -542,7 +542,7 @@ function shortyk8s_evw()
 _KPUB+=('a=report;c=shortyk8s_report;d="report all interesting resources"')
 function shortyk8s_report()
 {
-    local rsc res ns=$(shortyk8s_ns)
+    local rsc res ns=$(shortyk8s_kns)
     local ign='all|events|clusterroles|clusterrolebindings|customresourcedefinition|namespaces|'`
              `'nodes|persistentvolumeclaims|storageclasses'
     for rsc in $(_kcmd kubectl get 2>&1 | awk '/^  \* /{if (!($2 ~ /^('"${ign}"')$/)) print $2}'); do
