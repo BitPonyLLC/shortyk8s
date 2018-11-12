@@ -11,6 +11,9 @@ fi
 # show only the names (different than -oname which includes the kind of resource as a prefix)
 knames='--no-headers -ocustom-columns=:metadata.name'
 
+_KPUB=()
+_KPUB_HELP=()
+
 # main entry point for all shortyk8s commands
 function k()
 {
@@ -30,11 +33,10 @@ function k()
     l        logs
     s <r>    scale --replicas=<r>
 
-${_KGCMDS_HELP}    pc       get pods and containers
+${_KCMDS_HELP}
+    pc       get pods and containers
     ni       get nodes and private IP addresses
     pi       get pods and container images
-    ap       get all pods separated by hosting nodes
-    evw      event watcher
 
     tn       top node
     tp       top pod --containers
@@ -48,7 +50,7 @@ ${_KGCMDS_HELP}    pc       get pods and containers
     ^<pod_match>        replace with FIRST matching pod
     @<container_match>  replace with FIRST matching container in pod (requires ^<pod_match>)
     ,<node_match>       replace with matching nodes
-    ~<alt_command>      replace \`kubectl\` with \`<alt_command> --context \$(kctx) -n \$(kns)\`
+    ~<alt_command>      replace \`kubectl\` with \`<alt_command> --context \$(shortyk8s_ctx) -n \$(shortyk8s_ns)\`
 
   Examples:
 
@@ -64,8 +66,8 @@ EOF
         return 1
     fi
 
-    local a pod res caret atsign nc=false cmd=kubectl args=()
-    local orig_ctx=$_K8S_CTX orig_ns=$_K8S_NS revert_ctx=false revert_ns=false
+    local a c pod res caret atsign nc=false cmd=kubectl args=()
+    local orig_ctx=$_K8S_CTX orig_ns=$_K8S_NS revert_ctx=false revert_ns=false quiet=false
 
     if [[ " $@ " = ' all ' ]]; then
         # simple request to get all resources
@@ -84,14 +86,8 @@ EOF
                 args+=(apply --filename="$1"); shift
                 ;;
             any|all) args+=(--all-namespaces);;
-            ap)
-                kallpods "$@" | _kcolorize
-                return
-                ;;
             d|desc) args+=(describe);;
             del) args+=(delete);;
-            each) keach "${args[@]}" "$@"; return;;
-            evw) kevw "${args[@]}"; return;;
             ex) args+=('exec');;
             exi) args+=('exec' -ti);;
             g) args+=(get);;
@@ -114,7 +110,6 @@ EOF
                 args+=('-ocustom-columns=NAME:.metadata.name,STATUS:.status.phase,'`
                       `'IMAGES:.status.containerStatuses[*].image')
                 ;;
-            repl) krepl "$@"; return;;
             s)
                 if ! [[ "$1" =~ ^[[:digit:]]+$ ]]; then
                     echo "\"scale\" requires replicas (\"$1\" is not a number)" >&2
@@ -124,7 +119,6 @@ EOF
                 ;;
             tn) args+=(top node);;
             tp) args+=(top pod --containers);;
-            u) ku "$@"; return;;
             w) args+=(-owide);;
             y) nc=true; args+=(-oyaml);;
             ,*) args+=($(_knamegrep nodes "${a:1}"));;
@@ -134,17 +128,19 @@ EOF
             ~*)
                 cmd=${a:1}
                 case "$cmd" in
-                    helm) args+=(--kube-context "$(kctx)") ;;
-                    *) args+=(--context "$(kctx)" -n "$(kns)")
+                    helm) args+=(--kube-context "$(shortyk8s_ctx)") ;;
+                    *) args+=(--context "$(shortyk8s_ctx)" -n "$(shortyk8s_ns)")
                 esac
                 ;;
             --context)
+                # set one-time session context (so subcommands use it for lookups)
                 _K8S_CTX=$1
                 $revert_ns || _K8S_NS=''
                 revert_ctx=true
                 shift
                 ;;
             -n|--namespace)
+                # set one-time session namespace (so subcommands use it for lookups)
                 _K8S_NS=$1
                 $revert_ctx || K8S_CTX=''
                 revert_ns=true
@@ -156,10 +152,16 @@ EOF
                 ;;
             *)
                 found=false
-                for i in ${!_KGCMDS_AKA[@]}; do
-                    if [[ $a = ${_KGCMDS_AKA[$i]} ]]; then
+                for i in ${!_KCMDS_AKA[@]}; do
+                    if [[ "$a" = "${_KCMDS_AKA[$i]}" ]]; then
                         found=true
-                        _kget ${_KGCMDS[$i]}
+                        c="${_KCMDS[$i]}"
+                        if [[ "$c" = shortyk8s_* ]]; then
+                            cmd=$c
+                            quiet=true
+                        else
+                            _kget "${_KCMDS[$i]}"
+                        fi
                         break
                     fi
                 done
@@ -176,7 +178,7 @@ EOF
     fi
 
     local fmtr argstr=" ${args[@]} "
-    if [[ -t 1 && "${argstr}" = *' get '* ]]; then
+    if [[ -t 1 && "${argstr}" =~ ' get ' ]]; then
         # stdout is a tty and using a simple get...
         fmtr='_kcolorize'
         $nc && fmtr+=' -nc'
@@ -186,9 +188,9 @@ EOF
     [[ " ${args[@]} " =~ ' delete ' ]] && confirm=true
 
     if [[ -n "$fmtr" ]]; then
-        _KCONFIRM=$confirm _kcmd "$cmd" "${args[@]}" | $fmtr
+        _KCONFIRM=$confirm _KQUIET=$quiet _kcmd "$cmd" "${args[@]}" | $fmtr
     else
-        _KCONFIRM=$confirm _kcmd "$cmd" "${args[@]}"
+        _KCONFIRM=$confirm _KQUIET=$quiet _kcmd "$cmd" "${args[@]}"
     fi
     local rc=$?
 
@@ -198,19 +200,83 @@ EOF
     return $rc
 }
 
-# report brief info for display in a prompt
-function kprompt()
+_KPUB+=('')
+
+_KPUB+=('a=ap;c=shortyk8s_allpods;d="report all pods grouped by nodes"')
+function shortyk8s_allpods()
+{
+    if [[ $# -lt 1 ]]; then
+        echo 'usage: allpods <node_match> [<namespace_match> [<pod_match>]]' >&2
+        return 1
+    fi
+    local match='$8 ~ /'"$1"'/'
+    [[ $# -gt 1 ]] && match+=' && $1 ~ /'"$2"'/'
+    [[ $# -gt 2 ]] && match+=' && $2 ~ /'"$3"'/'
+    # sort by node then by namespace then by name
+    _kcmd kubectl get --all-namespaces pods -owide | \
+        awk 'NR==1{print;next};'"${match}"'{print|"sort -b -k8 -k1 -k2"}' | \
+        awk 'NR==1{print;next};{ x[$8]++; if (x[$8] == 1) print "---"; print}'
+}
+
+_KPUB+=('a=eachnode;c=shortyk8s_eachnode;d="run a command on each node async"')
+function shortyk8s_eachnode()
+{
+    local esc cmd ip line
+    if [[ "$1" = '--no-escape' ]]; then
+        shift; esc=false
+    else
+        esc=true
+    fi
+    if [[ $# -lt 1 ]]; then
+        echo "usage: eachnode [--no-escape] <cmd> [<args>...]" >&2
+        return 1
+    fi
+    if $esc; then
+        cmd=$(printf '%q ' "$@")
+    else
+        cmd="$*"
+    fi
+    for ip in $(_knodeips); do
+        ( ( ssh "$ip" $cmd 2>&1 | while read -r line; do printf '%-15s %s\n' "${ip}:" "${line}"; done ) & )
+    done
+    sleep 1
+    wait
+}
+
+_KPUB+=('a=uptime;c=shortyk8s_uptime;d="get uptimes for all nodes (highest load at top)"')
+function shortyk8s_uptime()
+{
+    shortyk8s_eachnode "$@" uptime | sort -rnk 11
+}
+
+_KPUB+=('a=mem;c=shortyk8s_mem;d="get memory usage for all nodes (smallest available at top)"')
+function shortyk8s_mem()
+{
+    printf '%15s %s\n' '[megabytes]' '             total       used       free     shared    buffers     cached'
+    shortyk8s_eachnode "$@" sh -c 'free -m | grep ^Mem' | sort -nk 5
+}
+
+_KPUB+=('a=df;c=shortyk8s_df;d="get file system usage for all nodes (smallest available at top)"')
+function shortyk8s_df()
+{
+    printf '%-15s %s\n' 'Host' 'Filesystem              Size  Used Avail Use% Mounted on'
+    shortyk8s_eachnode "$@" sh -c 'df -h / /var/lib/docker | sed 1d' | sort -rnk 6
+}
+
+_KPUB+=('')
+
+_KPUB+=('a=prompt;c=shortyk8s_prompt;d="provide info for shell prompt"')
+function shortyk8s_prompt()
 {
     if [[ -z "$_K8S_CTX" ]]; then
-        echo "$*$(kctx)/$(kns)"
+        echo "$*$(shortyk8s_ctx)/$(shortyk8s_ns)"
     else
-        echo "$*$(kctx)/$(kns)[tmp]"
+        echo "$*$(shortyk8s_ctx)/$(shortyk8s_ns)[tmp]"
     fi
 }
 
-# list all interesting context names
-# exec args for each interesting context
-function keachctx()
+_KPUB+=('a=eachctx;c=shortyk8s_eachctx;d="list all interesting context names"')
+function shortyk8s_eachctx()
 {
     local args=(.) ctx
     if [[ "$1" = '-m' ]]; then
@@ -219,7 +285,7 @@ function keachctx()
 
     if [[ $# -lt 1 ]]; then
         cat <<EOF >&2
-usage: keachctx [-m <ctx_match>] <command> [<arg> ....]
+usage: eachctx [-m <ctx_match>] <command> [<arg> ....]
 [ NOTE: command is eval'd with a \$ctx variable available ]
 EOF
         return 1
@@ -230,8 +296,8 @@ EOF
     done
 }
 
-# get the current context
-function kctx()
+_KPUB+=('a=ctx;c=shortyk8s_ctx;d="report current context"')
+function shortyk8s_ctx()
 {
     if [[ -n "${_K8S_CTX}" ]]; then
         echo "${_K8S_CTX}"
@@ -240,60 +306,8 @@ function kctx()
     fi
 }
 
-# list all internal node IPs
-function knodeips()
-{
-    _kcmd kubectl get nodes -o jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'
-}
-
-# run a command on each node async
-function keachnode()
-{
-    local esc cmd ip line
-    if [[ "$1" = '--no-escape' ]]; then
-        shift; esc=false
-    else
-        esc=true
-    fi
-    if [[ $# -lt 1 ]]; then
-        echo "usage: keachnode [--no-escape] <cmd> [<args>...]" >&2
-        return 1
-    fi
-    if $esc; then
-        cmd=$(shellwords "$@")
-    else
-        cmd="$*"
-    fi
-    for ip in $(knodeips); do
-        pgrep -qf "ssh: .*@${ip}" || ssh "$ip" : # start background ssh control session
-        ( ( ssh "$ip" $cmd 2>&1 | while read -r line; do printf '%-15s %s\n' "${ip}:" "${line}"; done ) & )
-    done
-    sleep 1
-    wait
-}
-
-# get uptimes for all nodes sorted by descending load (highest load at top)
-function kuptime()
-{
-    keachnode "$@" uptime | sort -rnk 11
-}
-
-# get memory usage for all nodes sorted by ascending free memory (smallest memory available at top)
-function kmem()
-{
-    printf '%15s %s\n' '[megabytes]' '             total       used       free     shared    buffers     cached'
-    keachnode "$@" sh -c 'free -m | grep ^Mem' | sort -nk 5
-}
-
-# get file system usage for all nodes sorted by percent used (smallest space available at top)
-function kdf()
-{
-    printf '%-15s %s\n' 'Host' 'Filesystem              Size  Used Avail Use% Mounted on'
-    keachnode "$@" sh -c 'df -h / /var/lib/docker | sed 1d' | sort -rnk 6
-}
-
-# get the current namespace
-function kns()
+_KPUB+=('a=ns;c=shortyk8s_ns;d="report current namespace"')
+function shortyk8s_ns()
 {
     if [[ -n "${_K8S_NS}" ]]; then
         echo "${_K8S_NS}"
@@ -302,22 +316,8 @@ function kns()
     fi
 }
 
-function _ku_usage()
-{
-    cat <<EOF >&2
-usage: ku [-s] <namespace>
-       ku [-s] <context> <namespace>
-       ku reset
-
-  Use "-s" to start a "session" that only changes context or namespace for this terminal.  The
-  session is "sticky" until a "reset" is invoked in the same terminal to revert back to using the
-  current configured context.
-
-EOF
-}
-
-# switch to a new default namespace (and optionally a new context) with partial matching
-function ku()
+_KPUB+=('a=u;c=shortyk8s_use;d="use a different context and/or namespace"')
+function shortyk8s_use()
 {
     local ctx ns code session=false
 
@@ -333,7 +333,7 @@ function ku()
 
     if [[ "$1" = 'reset' ]]; then
         unset _K8S_CTX _K8S_NS
-        [[ "$2" = '-q' ]] || ku
+        [[ "$2" = '-q' ]] || shortyk8s_use
         return
     fi
 
@@ -355,7 +355,7 @@ function ku()
             fi
             ns=$(_kctxs | awk '$1=="'"${ctx}"'"{print $4}' )
         else
-            ctx=$(kctx)
+            ctx=$(shortyk8s_ctx)
         fi
     elif [[ $# -eq 2 ]]; then
         # switch to context and namespace
@@ -364,7 +364,7 @@ function ku()
             echo 'no match found' >&2
             return 3
         fi
-        ns=$(kubectl --context "${ctx}" get ns $knames | egrep -m1 "$2")
+        ns=$(kubectl --context "$ctx" get ns $knames | egrep -m1 "$2")
         if [[ -z "$ns" ]]; then
             echo 'no match found' >&2
             return 4
@@ -385,11 +385,13 @@ function ku()
         kubectl config use-context "$ctx"
     fi
 
-    ku
+    shortyk8s_use
 }
 
-# execute an interactive REPL on a container
-function krepl()
+_KPUB+=('')
+
+_KPUB+=('a=repl;c=shortyk8s_repl;d="execute an interactive REPL on a container"')
+function shortyk8s_repl()
 {
     local opt raw=false
 
@@ -409,7 +411,7 @@ function krepl()
 
     if [[ $# -lt 1 ]]; then
         cat <<EOF >&2
-usage: krepl [OPTIONS] <pod_match> [@<container_match>] [<command> [<args>...]]
+usage: repl [OPTIONS] <pod_match> [@<container_match>] [<command> [<args>...]]
 
   Default container match will use the pod match.
 
@@ -443,8 +445,8 @@ EOF
     _kcmd kubectl "${e_args[@]}"
 }
 
-# run commands on one or more containers
-function keach()
+_KPUB+=('a=each;c=shortyk8s_each;d="run commands on one or more containers"')
+function shortyk8s_each()
 {
     local opt async=false interactive=false prefix=false raw=false verbose=false
 
@@ -468,7 +470,7 @@ function keach()
 
     if [[ $# -lt 2 ]]; then
         cat <<EOF >&2
-usage: keach [OPTIONS] <pod_match> [@<container_name>] <command> [<arguments>...]
+usage: each [OPTIONS] <pod_match> [@<container_name>] <command> [<arguments>...]
 
   Default container match will use the pod match.
 
@@ -511,8 +513,8 @@ EOF
           $_KCMD exec "${e_args[@]}" -- sh -c "${cmd}" <<< "${pods[@]}"
 }
 
-# watch events and pods concurrently (good for monitoring a deployment's progress)
-function kwatch()
+_KPUB+=('a=watch;c=shortyk8s_watch;d="watch events and pods concurrently"')
+function shortyk8s_watch()
 {
     ( # run in a subshell to trap control-c keyboard interrupt for cleanup of bg procs
         kevw --new &
@@ -522,9 +524,8 @@ function kwatch()
     )
 }
 
-# watch events sorted by most recent report
-# (kubectl get ev --watch ignores `sort-by` for the first listing)
-function kevw()
+_KPUB+=('a=evw;c=shortyk8s_evw;d="watch events sorted by most recent report"')
+function shortyk8s_evw()
 {
     local new=false
     if [[ "$1" = '--new' ]]; then
@@ -533,30 +534,15 @@ function kevw()
     local args=(get ev --no-headers --sort-by=.lastTimestamp \
         -ocustom-columns='TIMESTAMP:.lastTimestamp,COUNT:.count,KIND:.involvedObject.kind,'`
                         `'NAME:.involvedObject.name,MESSAGE:.message' "$@")
+    # kubectl get ev --watch ignores `sort-by` for the first listing
     $new || _kcmd kubectl "${args[@]}"
     _kcmd kubectl "${args[@]}" --watch-only
 }
 
-# report all pods grouped by nodes
-function kallpods()
+_KPUB+=('a=report;c=shortyk8s_report;d="report all interesting resources"')
+function shortyk8s_report()
 {
-    if [[ $# -lt 1 ]]; then
-        echo 'usage: kallpods <node_match> [<namespace_match> [<pod_match>]]' >&2
-        return 1
-    fi
-    local match='$8 ~ /'"$1"'/'
-    [[ $# -gt 1 ]] && match+=' && $1 ~ /'"$2"'/'
-    [[ $# -gt 2 ]] && match+=' && $2 ~ /'"$3"'/'
-    # sort by node then by namespace then by name
-    _kcmd kubectl get --all-namespaces pods -owide | \
-        awk 'NR==1{print;next};'"${match}"'{print|"sort -b -k8 -k1 -k2"}' | \
-        awk 'NR==1{print;next};{ x[$8]++; if (x[$8] == 1) print "---"; print}'
-}
-
-# report _ALL_ interesting k8s info (more than `get all` provides, but much slower)
-function kall()
-{
-    local rsc res ns=$(kns)
+    local rsc res ns=$(shortyk8s_ns)
     local ign='all|events|clusterroles|clusterrolebindings|customresourcedefinition|namespaces|'`
              `'nodes|persistentvolumeclaims|storageclasses'
     for rsc in $(_kcmd kubectl get 2>&1 | awk '/^  \* /{if (!($2 ~ /^('"${ign}"')$/)) print $2}'); do
@@ -577,8 +563,8 @@ EOF
     done
 }
 
-# get the latest version of shortyk8s
-function kupdate()
+_KPUB+=('a=update;c=shortyk8s_update;d="get the latest version of shortyk8s"')
+function shortyk8s_update()
 {
     if ! which git >/dev/null 2>&1; then
         echo 'Git is required for updating (or installing)' 2>&1
@@ -668,11 +654,18 @@ function _kcolorize()
     fi
 }
 
+# internal helper to list all internal node IPs
+function _knodeips()
+{
+    _kcmd kubectl get nodes -o \
+          jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'
+}
+
 # internal helper to show contexts without the first column, indicating session changes, optionally
 # highlighting current context
 function _kctxs()
 {
-    local hl='1' ctx=$(kctx)
+    local hl='1' ctx=$(shortyk8s_ctx)
     if [[ "$1" = '-hl' ]]; then
         shift
         # print highlighted if "selected"...
@@ -683,6 +676,20 @@ function _kctxs()
     # optionally replace the namespace...
     [[ -n "${_K8S_NS}" ]] && code+='if($1=="'"${ctx}"'"){$4="'"${_K8S_NS}"'";$5="[temporary]"};'
     kubectl config get-contexts | awk "{${code};print}" | column -xt | awk "${hl}"
+}
+
+function _ku_usage()
+{
+    cat <<EOF >&2
+usage: use [-s] <namespace>
+       use [-s] <context> <namespace>
+       use reset
+
+  Use "-s" to start a "session" that only changes context or namespace for this terminal.  The
+  session is "sticky" until a "reset" is invoked in the same terminal to revert back to using the
+  current configured context.
+
+EOF
 }
 
 # internal helper to match a pod and optionally a container
@@ -810,10 +817,10 @@ function _kcmd()
     "$cmd" "${args[@]}"
 }
 
-# preload the list of known kubectl get commands
-_KGCMDS=()
-_KGCMDS_AKA=()
-_KGCMDS_HELP=''
+# first, preload the list of known kubectl get commands
+_KCMDS=()
+_KCMDS_AKA=()
+_KCMDS_HELP=''
 str='s/^.*\* ([^ ]+) \(aka ([^\)]+).*$/c=\1;a=\2/p; s/^.*\* ([^ ]+) *$/c=\1;a=""/p'
 lines=($(kubectl get 2>&1 | sed -nE "$str"))
 if [[ ${#lines[@]} -eq 0 ]]; then
@@ -827,17 +834,31 @@ for vals in "${lines[@]}"; do
     [[ "$a" = 'deploy' ]] && a='dep'
     [[ "$a" = 'limits' ]] && a='lim'
     [[ "$a" = 'netpol' ]] && a='net'
-    _KGCMDS+=("$c")
-    _KGCMDS_AKA+=("${a:-$c}")
-    _KGCMDS_HELP+=$(printf '    %-8s get %s' "$a" "$c")$'\n'
+    _KCMDS+=("$c")
+    _KCMDS_AKA+=("${a:-$c}")
+    _KCMDS_HELP+=$(printf '    %-8s get %s' "$a" "$c")$'\n'
 done
-unset str lines vals c a
 
-ku reset -q
+# then, add our own "public" helpers
+for vals in "${_KPUB[@]}"; do
+    if [[ -z "$vals" ]]; then
+        _KCMDS_HELP+=$'\n' # add a spacer
+        continue
+    fi
+    eval "$vals"
+    _KCMDS+=("$c")
+    _KCMDS_AKA+=("${a:-$c}")
+    _KCMDS_HELP+=$(printf '    %-8s %s' "$a" "$d")$'\n'
+done
+
+unset str lines vals c a d _KPUB
+
+################################################################################
+# handle when script is executed
 
 if [[ "$(basename -- "$0")" = 'shortyk8s.sh' ]]; then
     if [[ "$1" = 'install' ]]; then
-        kupdate --install || exit
+        shortyk8s_update --install || exit
         cat <<EOF
 
 Shortyk8s has been added to ${HOME}/.bash_profile.
@@ -867,5 +888,5 @@ EOF
     fi
 elif [[ "$0" = "bash" && "$1" == 'install' ]]; then
     # invoked from curl piped to bash (README instructions)
-    kupdate --install
+    shortyk8s_update --install
 fi

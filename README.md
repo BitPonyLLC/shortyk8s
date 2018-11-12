@@ -107,6 +107,9 @@ $ k u reset
 *  prod-usw1   prod-usw1   prod-usw1   database
 ```
 
+Once a terminal is using a shortyk8s session, it continues to use sessions until a `k u reset` is
+issued, allowing you to switch to other contexts and only affect the current session.
+
 See also: [showing the current context in your shell prompt](#shell-prompt).
 
 ---
@@ -212,12 +215,12 @@ ly
 ...
 ```
 
-During a deployment, however, shortyk8s provides "kwatch" which will start watching events,
-reporting changes to the pods and containers, as well as a periodic timestamp to show when "nothing"
-is happening:
+During a deployment, however, shortyk8s provides `watch` which will start watching events, reporting
+changes to the pods and containers, as well as a periodic timestamp to show when "nothing" is
+happening:
 
 ``` shell
-$ kwatch
+$ k watch
 kubectl get ev --no-headers --sort-by=.lastTimestamp -ocustom-columns=TIMESTAMP:.lastTimestamp\,COUNT:.count\,KIND:.involvedObject.kind\,NAME:.involvedObject.name\,MESSAGE:.message --watch-on
 ly
 kubectl get pods -ocustom-columns=NAME:.metadata.name\,CONTAINERS:.status.containerStatuses\[\*\].name\,STATUS:.status.phase\,RESTARTS:.status.containerStatuses\[\*\].restartCount\,HOST_IP:.s
@@ -280,6 +283,7 @@ docker-for-desktop/shortyk8s
 $
 ```
 
+---
 ## Everything Else
 
 Shortyk8s is capable of much more. To see the full list of commands and expansions available, refer
