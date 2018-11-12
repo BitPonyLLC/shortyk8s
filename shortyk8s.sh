@@ -1,3 +1,5 @@
+#!/bin/bash
+
 if [ -z "${BASH_VERSINFO}" ] || [ -z "${BASH_VERSINFO[0]}" ] || [ ${BASH_VERSINFO[0]} -lt 3 ]; then
     cat <<EOF
 
@@ -282,6 +284,7 @@ function shortyk8s_use()
     fi
 
     if [[ "$1" = 'reset' ]]; then
+        rm -f "${_KSESSION}"
         unset _K8S_CTX _K8S_NS
         [[ "$2" = '-q' ]] || shortyk8s_use
         return
@@ -327,6 +330,13 @@ function shortyk8s_use()
     if $session; then
         _K8S_CTX=$ctx
         _K8S_NS=$ns
+        if $_KSCRIPT; then
+            mkdir -p "$(dirname "$_KSESSION")"
+            cat <<EOF > "$_KSESSION"
+_K8S_CTX='${_K8S_CTX}'
+_K8S_NS='${_K8S_NS}'
+EOF
+        fi
         echo "Temporarily switching to context \"${_K8S_CTX}\" using namespace \"${_K8S_NS}\""
     else
         shortyk8s_use reset -q
@@ -574,22 +584,21 @@ function shortyk8s_update()
         return 1
     fi
 
-    local khome="${HOME}/.shortyk8s"
-    if [[ -d "${khome}/.git" ]]; then
-        git -C "${khome}" pull || return
+    if [[ -d "${_KHOME}/.git" ]]; then
+        git -C "${_KHOME}" pull || return
     else
-        git clone -q https://github.com/bradrf/shortyk8s.git "${khome}" || return
-    fi
-
-    if [[ "$1" = '--install' ]]; then
-        echo ". '${khome}/shortyk8s.sh'" >> "${HOME}/.bash_profile"
-    else
-        . "${khome}/shortyk8s.sh"
+        git clone -q https://github.com/bradrf/shortyk8s.git "${_KHOME}" || return
     fi
 }
 
 ######################################################################
 # PRIVATE - internal helpers
+
+_KSCRIPT=false
+_KHOME="${HOME}/.shortyk8s"
+
+_KSESSION="${_KHOME}/sessions/${PPID}.sh"
+[[ -r "$_KSESSION" ]] && source "$_KSESSION"
 
 _KHI=$(echo -e '\033[30;43m') # black fg, yellow bg
 _KOK=$(echo -e '\033[01;32m') # bold green fg
@@ -864,30 +873,30 @@ if [[ "$(basename -- "$0")" = 'shortyk8s.sh' ]]; then
         shortyk8s_update --install || exit
         cat <<EOF
 
-Shortyk8s has been added to ${HOME}/.bash_profile.
+Shortyk8s has been downloaded and is ready for use.
 
-Now reload your environment like this:
+If you're a Bash user, have shortyk8s sourced from your init file like this:
 
-  $ source "${HOME}/.bash_profile"
+  $ echo ". '${_KHOME}/shortyk8s.sh'" >> "${HOME}/.bashrc"
+  $ source "${HOME}/.bashrc"
+
+If you use any other shell (e.g. fish, ksh, tcsh, zsh, etc.), or if you don't want to have shortyk8s
+pollute your shell namespace, it can be run as a script:
+
+  $ ${_KHOME}/shortyk8s.sh
 
 And then try this to show the current kubectl configuration contexts:
 
   $ k u
 
+...or...
+
+  $ ${_KHOME}/shortyk8s.sh u
+
 EOF
     else
-        cat <<EOF >&2
-
-Shortyk8s is meant to be source'd into your environment. You can try it out temporarily like this:
-
-  $ source "$0"
-
-However, if you'd like it to be updatable and ready in all future terminals, you can do this:
-
-  $ bash "$0" install
-
-EOF
-        exit 1
+        _KSCRIPT=true
+        k "$@"
     fi
 elif [[ "$0" = "bash" && "$1" == 'install' ]]; then
     # invoked from curl piped to bash (README instructions)

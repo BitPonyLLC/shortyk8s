@@ -13,6 +13,9 @@ GNU-based options (i.e. should work on BSD flavors like OS X just as well as Ubu
 
 * [Preview](#preview)
 * [Installing and Updating](#installing-and-updating)
+   * [Using in Bash](#using-in-bash)
+   * [Using in Other Shells](#using-in-other-shells)
+   * [Updating](#updating)
 * [Working with Contexts and Namespaces](#working-with-contexts-and-namespaces)
    * [Set Independent Context Terminal Sessions](#set-independent-context-terminal-sessions)
 * [Working with Nodes and Pods](#working-with-nodes-and-pods)
@@ -31,18 +34,40 @@ GNU-based options (i.e. should work on BSD flavors like OS X just as well as Ubu
 ## Installing and Updating
 
 Because shorty8s only depends on Bash (v3 or greater) and standard Unix tools (awk, grep, sed,
-etc.), installation is a simple matter of downloading and sourcing:
+etc.), installation is a simple matter of downloading:
 
 ``` shell
 $ curl https://raw.githubusercontent.com/bradrf/shortyk8s/master/shortyk8s.sh | bash -s -- install
-
-$ source ~/.bash_profile
 ```
 
 *Note:* Always read through scripts before executing them! In the above case, shortyk8s'
 `kupdate --install` function will be invoked by the bottom portion of the script:
 
   * https://raw.githubusercontent.com/bradrf/shortyk8s/master/shortyk8s.sh
+
+### Using in Bash
+
+For users of Bash as their primary shell, the recommendation is to source shortyk8s from your
+initialization file:
+
+``` shell
+$ echo '. ~/.shortyk8s/shortyk8s.sh' >> ~/.bashrc
+```
+
+### Using in Other Shells
+
+For folks that prefer other shells (e.g. fish, ksh, tcsh, zsh, etc.), as long as Bash is also
+installed on the system, shortyk8s can be run as a script:
+
+``` shell
+$ ~/.shortyk8s/shortyk8s.sh u
+```
+
+Another recommendation to consider is adding a command alias or shortcut to name
+`~/.shorty8s/shortyk8s` as `k` to keep consistent with the usage examples (and keep your commands
+short).
+
+### Updating
 
 To get the latest version of shortyk8s, it provides a helper to automate that process for you:
 
@@ -107,8 +132,9 @@ $ k u reset
 *  prod-usw1   prod-usw1   prod-usw1   database
 ```
 
-Once a terminal is using a shortyk8s session, it continues to use sessions until a `k u reset` is
-issued, allowing you to switch to other contexts and only affect the current session.
+Once a terminal is using a shortyk8s session, it continues to use sessions in any other `use` call
+allowing you to switch to other contexts and only affect the current session. To revert back to
+using the saved context, issue a `k use reset`.
 
 See also: [showing the current context in your shell prompt](#shell-prompt).
 
