@@ -159,7 +159,11 @@ EOF
                         c="${_KCMDS[$i]}"
                         if [[ "$c" = shortyk8s_* ]]; then
                             args+=("$@")
-                            "$c" "${args[@]}"
+                            if [[ -t 1 && "$a" == 'ap' ]]; then
+                                "$c" "${args[@]}" | _kcolorize
+                            else
+                                "$c" "${args[@]}"
+                            fi
                             # for now, all public helpers handle their own args...
                             return
                         fi

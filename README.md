@@ -296,7 +296,7 @@ terminal session. To that end, you can use the "kprompt" function in your bashrc
 the current context. Here's a simple illustration:
 
 ``` shell
-$ PROMPT_COMMAND=kprompt
+$ PROMPT_COMMAND=shortyk8s_prompt
 
 docker-for-desktop/shortyk8s
 $ k u -s minikube
