@@ -12,7 +12,6 @@ fi
 knames='--no-headers -ocustom-columns=:metadata.name'
 
 _KPUB=()
-_KPUB_HELP=()
 
 # main entry point for all shortyk8s commands
 function k()
@@ -157,11 +156,12 @@ EOF
                         found=true
                         c="${_KCMDS[$i]}"
                         if [[ "$c" = shortyk8s_* ]]; then
-                            cmd=$c
-                            quiet=true
-                        else
-                            _kget "${_KCMDS[$i]}"
+                            args+=("$@")
+                            "$c" "${args[@]}"
+                            # for now, all public helpers handle their own args...
+                            return
                         fi
+                        _kget "${_KCMDS[$i]}"
                         break
                     fi
                 done
@@ -185,7 +185,7 @@ EOF
     fi
 
     local confirm=false
-    [[ " ${args[@]} " =~ ' delete ' ]] && confirm=true
+    [[ " ${args[@]} " =~ ' delete ' || " ${args[@]} " =~ ' scale ' ]] && confirm=true
 
     if [[ -n "$fmtr" ]]; then
         _KCONFIRM=$confirm _KQUIET=$quiet _kcmd "$cmd" "${args[@]}" | $fmtr
@@ -237,7 +237,8 @@ function shortyk8s_eachnode()
         cmd="$*"
     fi
     for ip in $(_knodeips); do
-        ( ( ssh "$ip" $cmd 2>&1 | while read -r line; do printf '%-15s %s\n' "${ip}:" "${line}"; done ) & )
+        ( ( ssh -q -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "$ip" $cmd 2>&1 \
+                | while read -r line; do printf '%-15s %s\n' "${ip}:" "${line}"; done ) & )
     done
     sleep 1
     wait
