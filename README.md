@@ -41,7 +41,7 @@ $ curl https://raw.githubusercontent.com/bradrf/shortyk8s/master/shortyk8s.sh | 
 ```
 
 *Note:* Always read through scripts before executing them! In the above case, shortyk8s'
-`kupdate --install` function will be invoked by the bottom portion of the script:
+`shortyk8s_update --install` function will be invoked by the bottom portion of the script:
 
   * https://raw.githubusercontent.com/bradrf/shortyk8s/master/shortyk8s.sh
 
