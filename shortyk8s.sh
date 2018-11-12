@@ -563,6 +563,8 @@ EOF
     done
 }
 
+_KPUB+=('')
+
 _KPUB+=('a=update;c=shortyk8s_update;d="get the latest version of shortyk8s"')
 function shortyk8s_update()
 {

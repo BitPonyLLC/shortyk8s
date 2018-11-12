@@ -47,7 +47,7 @@ $ source ~/.bash_profile
 To get the latest version of shortyk8s, it provides a helper to automate that process for you:
 
 ``` shell
-$ kupdate
+$ k update
 ```
 
 ---
