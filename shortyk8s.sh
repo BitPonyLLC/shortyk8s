@@ -257,7 +257,7 @@ usage: eachnode [OPTIONS] <command> [<arguments>...]
     -i    run the command interactive with a TTY allocated
     -p    prefix the command output with the name of the node
     -r    do not escape the command and arguments (i.e. "raw")
-    -v    show the kubectl command line used
+    -v    show the ssh command line used
 
 EOF
         return 1
@@ -420,22 +420,54 @@ function shortyk8s_kns()
 _KPUB+=('a=eachctx;c=shortyk8s_eachctx;d="invoke action for matching context names"')
 function shortyk8s_eachctx()
 {
-    local args=(.) ctx
-    if [[ "$1" = '-m' ]]; then
-        shift; args=("$1"); shift
-    fi
+    local opt async=false interactive=false prefix=false verbose=false m_args=(.)
+
+    OPTIND=1
+
+    while getopts 'am:prv' opt; do
+        case $opt in
+            a) async=true;;
+            i) interactive=true;;
+            m) m_args=($OPTARG);;
+            p) prefix=true;;
+            v) verbose=true;;
+            \?)
+                echo "Invalid option: -$OPTARG" >&2
+                return 2
+                ;;
+        esac
+    done
+
+    shift "$((OPTIND-1))"
 
     if [[ $# -lt 1 ]]; then
         cat <<EOF >&2
-usage: eachctx [-m <ctx_match>] <command> [<arg> ....]
-[ NOTE: command is eval'd with a \$ctx variable available ]
+usage: eachctx [OPTIONS] <command> [<arguments>...]
+
+  Options:
+
+    -a         run the command asynchronously for all matching contexts
+    -i         run the command with an interactive shell
+    -m <match> select only matching contexts
+    -p         prefix the command output with the context
+    -v         show the command line used
+
 EOF
         return 1
     fi
 
-    for ctx in $(_kctxgrep "${args[@]}"); do
-        eval "$@"
-    done
+    local cmd ctxs x_args=() e_args=(-c)
+
+    $interactive && e_args=(-ic)
+
+    cmd="$*"
+    ctxs=($(_kctxgrep "${m_args[@]}"))
+    $prefix && cmd="${cmd}"' | awk -v h={}": " "{print h \$0}"'
+    $verbose && x_args+=(-t)
+    $async && x_args+=(-P ${#ctxs[@]})
+
+    xargs "${x_args[@]}" -I'{}' -n1 -- \
+          bash "${e_args[@]}" ". ${BASH_SOURCE[0]};ctx='{}';${cmd}" <<< "${ctxs[@]}"
 }
 
 _KPUB+=('')
