@@ -224,30 +224,65 @@ function shortyk8s_allpods()
         awk 'NR==1{print;next};{ x[$8]++; if (x[$8] == 1) print "---"; print}'
 }
 
-_KPUB+=('a=eachnode;c=shortyk8s_eachnode;d="run a command on each node async"')
+_KPUB+=('a=eachnode;c=shortyk8s_eachnode;d="run a command on each node"')
 function shortyk8s_eachnode()
 {
-    local esc cmd ip line
-    if [[ "$1" = '--no-escape' ]]; then
-        shift; esc=false
-    else
-        esc=true
-    fi
+    local opt async=false interactive=false prefix=false raw=false verbose=false
+
+    OPTIND=1
+
+    while getopts 'aiprv' opt; do
+        case $opt in
+            a) async=true;;
+            i) interactive=true;;
+            p) prefix=true;;
+            r) raw=true;;
+            v) verbose=true;;
+            \?)
+                echo "Invalid option: -$OPTARG" >&2
+                return 2
+                ;;
+        esac
+    done
+
+    shift "$((OPTIND-1))"
+
     if [[ $# -lt 1 ]]; then
-        echo "usage: eachnode [--no-escape] <cmd> [<args>...]" >&2
+        cat <<EOF >&2
+usage: eachnode [OPTIONS] <command> [<arguments>...]
+
+  Options:
+
+    -a    run the command asynchronously for each node
+    -i    run the command interactive with a TTY allocated
+    -p    prefix the command output with the name of the node
+    -r    do not escape the command and arguments (i.e. "raw")
+    -v    show the kubectl command line used
+
+EOF
         return 1
     fi
-    if $esc; then
-        cmd=$(printf '%q ' "$@")
-    else
-        cmd="$*"
+
+    local cmd ips x_args=()
+    local e_args=(-q -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no '{}')
+
+    if $interactive; then
+        cmd+='TERM=term'
+        e_args+=(-t)
     fi
-    for ip in $(_knodeips); do
-        ( ( ssh -q -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "$ip" $cmd 2>&1 \
-                | while read -r line; do printf '%-15s %s\n' "${ip}:" "${line}"; done ) & )
-    done
-    sleep 1
-    wait
+
+    if $raw; then
+        cmd="$*"
+    else
+        cmd=$(printf ' %q' "$@")
+    fi
+
+    ips=($(_knodeips))
+    $prefix && cmd="${cmd}"' | awk -v h=`hostname`": " "{print h \$0}"'
+    $verbose && x_args+=(-t)
+    $async && x_args+=(-P ${#ips[@]})
+
+    xargs "${x_args[@]}" -I'{}' -n1 -- ssh "${e_args[@]}" -- "$cmd" <<< "${ips[@]}"
 }
 
 _KPUB+=('a=uptime;c=shortyk8s_uptime;d="get uptimes for all nodes (highest load at top)"')
@@ -519,7 +554,7 @@ EOF
         cmd+=$(printf ' %q' "$@")
     fi
 
-    $prefix && cmd="(${cmd})"' | awk -v h=`hostname -f`": " "{print h \$0}"'
+    $prefix && cmd="(${cmd})"' | awk -v h=`hostname`": " "{print h \$0}"'
     $verbose && x_args+=(-t)
     $async && x_args+=(-P ${#pods[@]})
 
