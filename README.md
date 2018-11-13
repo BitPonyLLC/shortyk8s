@@ -17,6 +17,7 @@ GNU-based options (i.e. should work on BSD flavors like OS X just as well as Ubu
    * [Using in Other Shells](#using-in-other-shells)
    * [Updating](#updating)
 * [Working with Contexts and Namespaces](#working-with-contexts-and-namespaces)
+   * [Gotta Match 'Em All!](#gotta-match-em-all)
    * [Set Independent Context Terminal Sessions](#set-independent-context-terminal-sessions)
 * [Working with Nodes and Pods](#working-with-nodes-and-pods)
    * [Executing Remote Actions](#executing-remote-actions)
@@ -170,6 +171,24 @@ NAME                   STATUS   IMAGES
 names-bcc8779b4-dtjl4  Running  tomdesinto/name-generator:latest
 names-bcc8779b4-g9wv2  Running  tomdesinto/name-generator:latest
 names-bcc8779b4-k8nlb  Running  tomdesinto/name-generator:latest
+```
+
+### Gotta Match 'Em All!
+
+Rarely does one have the full pod names at hand, so shortyk8s has some expansion helpers to make
+finding the right pod(s) a simple matter of remembering the basename. For example, to describe only
+the "job" pods, use the dot expansion to match all pods with the "job" name:
+
+``` shell
+$ k d .job
+...
+```
+
+Same goes for nodes, but for those, use the comma expansion form:
+
+``` shell
+$ k d ,gke-host
+...
 ```
 
 ### Executing Remote Actions
