@@ -180,14 +180,16 @@ finding the right pod(s) a simple matter of remembering the basename. For exampl
 the "job" pods, use the dot expansion to match all pods with the "job" name:
 
 ``` shell
-$ k d .job
+$ k d po .job
+kubectl describe pods job-84b767bb7f-f5jl4 job-84b767bb7f-f7cbv job-84b767bb7f-qbwqm
 ...
 ```
 
 Same goes for nodes, but for those, use the comma expansion form:
 
 ``` shell
-$ k d ,gke-host
+$ k d no ,gke-test
+kubectl describe nodes gke-test-node-c91597fa-jsq3 gke-test-node-c91597fa-szwn
 ...
 ```
 
