@@ -121,22 +121,7 @@ EOF
             tn) args+=(top node);;
             tp) args+=(top pod --containers);;
             version)
-                local state
-                local st=$(git -C "${_KHOME}" status --porcelain --untracked-files=no 2>/dev/null)
-                if [[ -z "$st" ]]; then
-                    state='clean'
-                else
-                    state='dirty'
-                fi
-                if [[ " $@ " =~ ' --short' ]]; then
-                    echo "Shortyk8s Version: $(_kversion)"
-                else
-                    cat <<EOF
-Shortyk8s Version: version.Info{Major:"${_KMAJVER}", Minor:"${_KMINVER}", \
-GitVersion:"$(_kversion)", GitCommit:"$(git -C "${_KHOME}" log -1 --format=%H)", \
-GitTreeState:"${state}", BashVersion:"${BASH_VERSION}", Platform:"$(uname -s -m)"}
-EOF
-                fi
+                _kversioninfo "$@"
                 kubectl version "$@"
                 return
                 ;;
@@ -757,12 +742,31 @@ function _kcolorize()
     fi
 }
 
+# load these at source time to reflect running state in memory, not state of the repo
 _KMAJVER=0
 _KMINVER=1
+_KPATVER=$(TZ=UTC git -C "${_KHOME}" log -1 --format=%cd --date='format-local:%Y%m%d%H')
+_KSTATUS=$(git -C "${_KHOME}" status --porcelain --untracked-files=no 2>/dev/null)
+_KGITCMT=$(git -C "${_KHOME}" log -1 --format=%H)
+
 function _kversion()
 {
-    local cd=$(TZ=UTC git -C "${_KHOME}" log -1 --format=%cd --date='format-local:%Y%m%d%H')
-    echo "v${_KMAJVER}.${_KMINVER}.${cd}"
+    echo "v${_KMAJVER}.${_KMINVER}.${_PATVER}"
+}
+
+function _kversioninfo()
+{
+    local state
+    if [[ " $@ " =~ ' --short' ]]; then
+        echo "Shortyk8s Version: $(_kversion)"
+    else
+        if [[ -z "$_KSTATUS" ]]; then state='clean'; else state='dirty'; fi
+        cat <<EOF
+Shortyk8s Version: version.Info{Major:"${_KMAJVER}", Minor:"${_KMINVER}", \
+GitVersion:"$(_kversion)", GitCommit:"${_KGITCMT}", GitTreeState:"${state}", \
+BashVersion:"${BASH_VERSION}", Platform:"$(uname -s -m)"}
+EOF
+    fi
 }
 
 # internal helper to list all internal node IPs
