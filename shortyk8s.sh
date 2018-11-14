@@ -56,7 +56,7 @@ ${_KCMDS_HELP}
   Examples:
 
     k po                       # => kubectl get pods
-    k g .odd y                 # => kubectl get pod/oddjob-2231453331-sj56r -oyaml
+    k g .odd y                 # => kubectl get pods oddjob-2231453331-sj56r -oyaml
     k repl ^web @nginx ash     # => kubectl exec -ti webservice-3928615836-37fv4 -c nginx ash
     k l ^job --tail=5          # => kubectl logs bgjobs-1444197888-7xsgk --tail=5
     k s 8 dep web              # => kubectl scale --replicas=8 deployments webservice
@@ -120,6 +120,21 @@ EOF
                 ;;
             tn) args+=(top node);;
             tp) args+=(top pod --containers);;
+            version)
+                local state
+                if [[ -z "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+                    state='clean'
+                else
+                    state='dirty'
+                fi
+                cat <<EOF
+Shortyk8s Version: version.Info{Major:"${_KMAJVER}", Minor:"${_KMINVER}", \
+GitVersion:"$(_kversion)", GitCommit:"$(git -C "${_KHOME}" log -1 --format=%H)", \
+GitTreeState:"${state}", BashVersion:"${BASH_VERSION}", Platform:"$(uname -s -m)"}
+EOF
+                kubectl version
+                return
+                ;;
             w) args+=(-owide);;
             y) nc=true; args+=(-oyaml);;
             ,*) args+=($(_knamegrep nodes "${a:1}"));;
@@ -735,6 +750,13 @@ function _kcolorize()
     else
         awk "${_KCOLORIZE}" | column -xt
     fi
+}
+
+_KMAJVER=0
+_KMINVER=1
+function _kversion()
+{
+    echo "v${_KMAJVER}.${_KMINVER}.$(git -C "${_KHOME}" log -1 --format=%cd --date='format:%Y%m%d%H%M%S')"
 }
 
 # internal helper to list all internal node IPs
