@@ -751,7 +751,7 @@ _KGITCMT=$(git -C "${_KHOME}" log -1 --format=%H)
 
 function _kversion()
 {
-    echo "v${_KMAJVER}.${_KMINVER}.${_PATVER}"
+    echo "v${_KMAJVER}.${_KMINVER}.${_KPATVER}"
 }
 
 function _kversioninfo()
