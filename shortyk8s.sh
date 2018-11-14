@@ -745,7 +745,7 @@ function _kcolorize()
 # load these at source time to reflect running state in memory, not state of the repo
 _KMAJVER=0
 _KMINVER=1
-_KPATVER=$(TZ=UTC git -C "${_KHOME}" log -1 --format=%cd --date='format-local:%Y%m%d%H')
+_KPATVER=$(TZ=UTC git -C "${_KHOME}" log -1 --format=%cd --date='format-local:%Y%m%d%H%M')
 _KSTATUS=$(git -C "${_KHOME}" status --porcelain --untracked-files=no 2>/dev/null)
 _KGITCMT=$(git -C "${_KHOME}" log -1 --format=%H)
 
