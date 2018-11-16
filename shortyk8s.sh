@@ -232,62 +232,17 @@ function shortyk8s_allpods()
 _KPUB+=('a=eachnode;c=shortyk8s_eachnode;d="run a command on each node"')
 function shortyk8s_eachnode()
 {
-    local opt async=false interactive=false prefix=false raw=false verbose=false
+    local _keach_usage='eachnode [OPTIONS] <node_match>' _keach_resources='_knodeips'
 
-    OPTIND=1
+    function _keach_prepare() {
+        e_args+=(ssh -q -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no '{}')
+        if $interactive; then
+            remote_cmd+='TERM=term'
+            e_args+=(-t)
+        fi
+    }
 
-    while getopts 'aiprv' opt; do
-        case $opt in
-            a) async=true;;
-            i) interactive=true;;
-            p) prefix=true;;
-            r) raw=true;;
-            v) verbose=true;;
-            \?)
-                echo "Invalid option: -$OPTARG" >&2
-                return 2
-                ;;
-        esac
-    done
-
-    shift "$((OPTIND-1))"
-
-    if [[ $# -lt 1 ]]; then
-        cat <<EOF >&2
-usage: eachnode [OPTIONS] <command> [<arguments>...]
-
-  Options:
-
-    -a    run the command asynchronously for each node
-    -i    run the command interactive with a TTY allocated
-    -p    prefix the command output with the name of the node
-    -r    do not escape the command and arguments (i.e. "raw")
-    -v    show the ssh command line used
-
-EOF
-        return 1
-    fi
-
-    local cmd ips x_args=()
-    local e_args=(-q -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no '{}')
-
-    if $interactive; then
-        cmd+='TERM=term'
-        e_args+=(-t)
-    fi
-
-    if $raw; then
-        cmd="$*"
-    else
-        cmd=$(printf ' %q' "$@")
-    fi
-
-    ips=($(_knodeips))
-    $prefix && cmd="${cmd}"' | awk -v h=`hostname`": " "{print h \$0}"'
-    $verbose && x_args+=(-t)
-    $async && x_args+=(-P ${#ips[@]})
-
-    xargs "${x_args[@]}" -I'{}' -n1 -- ssh "${e_args[@]}" -- "$cmd" <<< "${ips[@]}"
+    _keach "$@"
 }
 
 _KPUB+=('a=uptime;c=shortyk8s_uptime;d="get uptimes for all nodes (highest load at top)"')
@@ -425,54 +380,15 @@ function shortyk8s_kns()
 _KPUB+=('a=eachctx;c=shortyk8s_eachctx;d="invoke action for matching context names"')
 function shortyk8s_eachctx()
 {
-    local opt async=false interactive=false prefix=false verbose=false m_args=(.)
+    local _keach_name='eachctx' _keach_resources='_kctxgrep'
 
-    OPTIND=1
+    function _keach_prepare() {
+        if $interactive; then e_args+=(bash -ic); else e_args+=(bash -c); fi
+        prefix_cmd='{}'
+        remote_cmd=". ${BASH_SOURCE[0]};ctx='{}';${remote_cmd}"
+    }
 
-    while getopts 'am:prv' opt; do
-        case $opt in
-            a) async=true;;
-            i) interactive=true;;
-            m) m_args=($OPTARG);;
-            p) prefix=true;;
-            v) verbose=true;;
-            \?)
-                echo "Invalid option: -$OPTARG" >&2
-                return 2
-                ;;
-        esac
-    done
-
-    shift "$((OPTIND-1))"
-
-    if [[ $# -lt 1 ]]; then
-        cat <<EOF >&2
-usage: eachctx [OPTIONS] <command> [<arguments>...]
-
-  Options:
-
-    -a         run the command asynchronously for all matching contexts
-    -i         run the command with an interactive shell
-    -m <match> select only matching contexts
-    -p         prefix the command output with the context
-    -v         show the command line used
-
-EOF
-        return 1
-    fi
-
-    local cmd ctxs x_args=() e_args=(-c)
-
-    $interactive && e_args=(-ic)
-
-    cmd="$*"
-    ctxs=($(_kctxgrep "${m_args[@]}"))
-    $prefix && cmd="${cmd}"' | awk -v h={}": " "{print h \$0}"'
-    $verbose && x_args+=(-t)
-    $async && x_args+=(-P ${#ctxs[@]})
-
-    xargs "${x_args[@]}" -I'{}' -n1 -- \
-          bash "${e_args[@]}" ". ${BASH_SOURCE[0]};ctx='{}';${cmd}" <<< "${ctxs[@]}"
+    _keach "$@"
 }
 
 _KPUB+=('')
@@ -480,33 +396,13 @@ _KPUB+=('')
 _KPUB+=('a=repl;c=shortyk8s_repl;d="execute an interactive REPL on a container"')
 function shortyk8s_repl()
 {
-    local opt raw=false
-
-    OPTIND=1
-
-    while getopts 'r' opt; do
-        case $opt in
-            r) raw=true;;
-            \?)
-                echo "Invalid option: -$OPTARG" >&2
-                return 2
-                ;;
-        esac
-    done
-
-    shift "$((OPTIND-1))"
-
     if [[ $# -lt 1 ]]; then
         cat <<EOF >&2
-usage: repl [OPTIONS] <pod_match> [@<container_match>] [<command> [<args>...]]
+usage: repl <pod_match> [@<container_match>] [<command> [<args>...]]
 
   Default container match will use the pod match.
 
   Default command will try to determine the best shell available (bash || ash || sh).
-
-  Options:
-
-    -r    do not escape the command and arguments (i.e. "raw")
 
 EOF
         return 1
@@ -522,10 +418,8 @@ EOF
 
     if [[ $# -eq 0 ]]; then
         cmd=' bash || ash || sh'
-    elif $raw; then
-        cmd=" $*"
     else
-        cmd=$(printf ' %q' "$@")
+        cmd=" $*"
     fi
 
     e_args+=(-- sh -c "KREPL=${USER};TERM=xterm;PS1=\"\$(hostname -s) $ \";export TERM PS1;${cmd}")
@@ -535,69 +429,27 @@ EOF
 _KPUB+=('a=each;c=shortyk8s_each;d="run commands on one or more containers"')
 function shortyk8s_each()
 {
-    local opt async=false interactive=false prefix=false raw=false verbose=false
+    local _keach_usage='each [OPTIONS] <pod_match> [@<container_name>]'
+    local pods con
 
-    OPTIND=1
+    function _keach_match() {
+        _kgetpodcon "$1" "$2" || return $?
+        match_shift=$cnt
+    }
 
-    while getopts 'aiprv' opt; do
-        case $opt in
-            a) async=true;;
-            i) interactive=true;;
-            p) prefix=true;;
-            r) raw=true;;
-            v) verbose=true;;
-            \?)
-                echo "Invalid option: -$OPTARG" >&2
-                return 2
-                ;;
-        esac
-    done
+    function _keach_prepare() {
+        _KNOOP=true _kcmd kubectl
+        e_args+=("$_KCMD" exec)
+        [[ -n "$con" ]] && e_args+=(-c "$con")
+        if $interactive; then
+            cmd+='TERM=term'
+            e_args+=(-ti)
+        fi
+        cmd+='sh -c'
+        resources=$pods
+    }
 
-    shift "$((OPTIND-1))"
-
-    if [[ $# -lt 2 ]]; then
-        cat <<EOF >&2
-usage: each [OPTIONS] <pod_match> [@<container_name>] <command> [<arguments>...]
-
-  Default container match will use the pod match.
-
-  Options:
-
-    -a    run the command asynchronously for all matching pods
-    -i    run the command interactive with a TTY allocated
-    -p    prefix the command output with the name of the pod
-    -r    do not escape the command and arguments (i.e. "raw")
-    -v    show the kubectl command line used
-
-EOF
-        return 1
-    fi
-
-    local pods con cnt cmd x_args=() e_args=('{}')
-
-    _kgetpodcon "$1" "$2" || return $?
-    shift $cnt
-
-    [[ -n "${con}" ]] && e_args+=(-c "${con}")
-
-    if $interactive; then
-        cmd+='TERM=term'
-        e_args+=(-ti)
-    fi
-
-    if $raw; then
-        cmd+=" $*"
-    else
-        cmd+=$(printf ' %q' "$@")
-    fi
-
-    $prefix && cmd="(${cmd})"' | awk -v h=`hostname`": " "{print h \$0}"'
-    $verbose && x_args+=(-t)
-    $async && x_args+=(-P ${#pods[@]})
-
-    _KNOOP=true _kcmd kubectl
-    xargs "${x_args[@]}" -I'{}' -n1 -- \
-          $_KCMD exec "${e_args[@]}" -- sh -c "${cmd}" <<< "${pods[@]}"
+    _keach "$@"
 }
 
 _KPUB+=('a=watch;c=shortyk8s_watch;d="watch events and pods concurrently"')
@@ -772,8 +624,11 @@ EOF
 # internal helper to list all internal node IPs
 function _knodeips()
 {
-    _kcmd kubectl get nodes -o \
-          jsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'
+    local names=()
+    [[ $# -gt 0 ]] && \
+        names=($(kubectl get nodes --show-labels --no-headers | awk "/$*/{print \$1}"))
+    _kcmd kubectl get nodes "${names[@]}" \
+          -ojsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'
 }
 
 # internal helper to show contexts without the first column, indicating session changes, optionally
@@ -892,6 +747,62 @@ function _kget()
     else
         args+=(get "$@")
     fi
+}
+
+# internal helper to execute "each" commands using common options and behavior
+function _keach()
+{
+    local opt async=false interactive=false prefix=false quiet=true
+
+    OPTIND=1
+
+    while getopts 'aipv' opt; do
+        case $opt in
+            a) async=true;;
+            i) interactive=true;;
+            p) prefix=true;;
+            v) quiet=false;;
+            \?) return 2;;
+        esac
+    done
+
+    shift "$((OPTIND-1))"
+
+    local match=$1
+
+    if declare -F _keach_match >/dev/null; then
+        # caller wants to use more than one matching argument
+        local match_shift=0
+        _keach_match "$@" || return $?
+        shift $match_shift
+    fi
+
+    if [[ $# -le 1 ]]; then
+        cat <<EOF >&2
+
+usage: ${_keach_usage} <command> [<arguments>...]
+
+        -a    run the command asynchronously
+        -i    run the command interactive with a TTY allocated
+        -p    prefix the command output with a name
+        -v    show the command line used
+
+EOF
+        return 1
+    fi
+
+    local resources=($(_KQUIET=$quiet "${_keach_resources:=:}" "${match[@]}"))
+    local remote_cmd="$*" prefix_cmd='`hostname -s`' x_args=() e_args=()
+
+    _keach_prepare
+
+    unset _keach_match _keach_usage _keach_resources _keach_prepare # remove "closures"
+
+    $prefix && remote_cmd="${remote_cmd}"' 2>&1 | awk -v h='"${prefix_cmd}"'": " "{print h \$0}"'
+    $quiet || x_args+=(-t)
+    $async && x_args+=(-P ${#resources[@]})
+
+    xargs "${x_args[@]}" -I'{}' -n1 -- "${e_args[@]}" -- "$remote_cmd" <<< "${resources[@]}"
 }
 
 _KNOOP=false
