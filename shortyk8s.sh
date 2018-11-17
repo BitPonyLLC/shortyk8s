@@ -255,14 +255,14 @@ _KPUB+=('a=mem;c=shortyk8s_mem;d="get memory usage for all nodes (smallest avail
 function shortyk8s_mem()
 {
     printf '%15s %s\n' '[megabytes]' '             total       used       free     shared    buffers     cached'
-    shortyk8s_eachnode "$@" sh -c 'free -m | grep ^Mem' | sort -nk 5
+    shortyk8s_eachnode "$@" 'free -m | grep ^Mem' | sort -nk 5
 }
 
 _KPUB+=('a=df;c=shortyk8s_df;d="get file system usage for all nodes (smallest available at top)"')
 function shortyk8s_df()
 {
     printf '%-15s %s\n' 'Host' 'Filesystem              Size  Used Avail Use% Mounted on'
-    shortyk8s_eachnode "$@" sh -c 'df -h / /var/lib/docker | sed 1d' | sort -rnk 6
+    shortyk8s_eachnode "$@" 'df -h / /var/lib/docker | sed 1d' | sort -rnk 6
 }
 
 _KPUB+=('')
@@ -380,7 +380,7 @@ function shortyk8s_kns()
 _KPUB+=('a=eachctx;c=shortyk8s_eachctx;d="invoke action for matching context names"')
 function shortyk8s_eachctx()
 {
-    local _keach_name='eachctx' _keach_resources='_kctxgrep'
+    local _keach_usage='eachctx [OPTIONS] <context_match>' _keach_resources='_kctxgrep'
 
     function _keach_prepare() {
         if $interactive; then e_args+=(bash -ic); else e_args+=(bash -c); fi
@@ -430,23 +430,25 @@ _KPUB+=('a=each;c=shortyk8s_each;d="run commands on one or more containers"')
 function shortyk8s_each()
 {
     local _keach_usage='each [OPTIONS] <pod_match> [@<container_name>]'
-    local pods con
+    local con
 
-    function _keach_match() {
+    function _keach_resources() {
+        local pods
         _kgetpodcon "$1" "$2" || return $?
+        resources=("${pods[@]}")
         match_shift=$cnt
     }
 
     function _keach_prepare() {
+        local shell_cmd=(/bin/sh -c)
         _KNOOP=true _kcmd kubectl
-        e_args+=("$_KCMD" exec)
+        e_args+=("$_KCMD" exec '{}')
         [[ -n "$con" ]] && e_args+=(-c "$con")
         if $interactive; then
-            cmd+='TERM=term'
+            shell_cmd=('TERM=term' "${shell_cmd[@]}")
             e_args+=(-ti)
         fi
-        cmd+='sh -c'
-        resources=$pods
+        e_args+=(-- "${shell_cmd[@]}")
     }
 
     _keach "$@"
@@ -768,16 +770,19 @@ function _keach()
 
     shift "$((OPTIND-1))"
 
-    local match=$1
-
-    if declare -F _keach_match >/dev/null; then
-        # caller wants to use more than one matching argument
-        local match_shift=0
-        _keach_match "$@" || return $?
+    if [[ $# -gt 1 ]]; then
+        local match_shift=1
+        local resources
+        if declare -F _keach_resources >/dev/null; then
+            # caller defined "closure" to get the resources
+            _keach_resources "$@"
+        else
+            resources=($(_KQUIET=$quiet "${_keach_resources}" "$1"))
+        fi
         shift $match_shift
     fi
 
-    if [[ $# -le 1 ]]; then
+    if [[ $# -lt 1 ]]; then
         cat <<EOF >&2
 
 usage: ${_keach_usage} <command> [<arguments>...]
@@ -791,18 +796,18 @@ EOF
         return 1
     fi
 
-    local resources=($(_KQUIET=$quiet "${_keach_resources:=:}" "${match[@]}"))
     local remote_cmd="$*" prefix_cmd='`hostname -s`' x_args=() e_args=()
 
     _keach_prepare
 
-    unset _keach_match _keach_usage _keach_resources _keach_prepare # remove "closures"
+    unset _keach_usage _keach_resources _keach_prepare # remove "closures"
 
-    $prefix && remote_cmd="${remote_cmd}"' 2>&1 | awk -v h='"${prefix_cmd}"'": " "{print h \$0}"'
+    $prefix && remote_cmd="( ${remote_cmd} ) 2>&1 | awk -v h=\"${prefix_cmd}:\" '{print h,\$0}'"
     $quiet || x_args+=(-t)
     $async && x_args+=(-P ${#resources[@]})
+    x_args+=(-I'{}' -n1)
 
-    xargs "${x_args[@]}" -I'{}' -n1 -- "${e_args[@]}" -- "$remote_cmd" <<< "${resources[@]}"
+    xargs "${x_args[@]}" -- "${e_args[@]}" -- "$remote_cmd" <<< "${resources[@]}"
 }
 
 _KNOOP=false
