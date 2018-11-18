@@ -29,7 +29,7 @@ GNU-based options (i.e. should work on BSD flavors like OS X just as well as Ubu
 ---
 ## Preview
 
-[![asciicast](https://asciinema.org/a/207788.png)](https://asciinema.org/a/207788?loop=1&autoplay=1)
+[![asciicast](https://asciinema.org/a/212486.svg)](https://asciinema.org/a/212486?loop=1&autoplay=1)
 
 ---
 ## Installing and Updating

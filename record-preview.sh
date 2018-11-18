@@ -101,4 +101,4 @@ sleep 8
 { kill %1 && wait; } 2>/dev/null
 
 c "Alrighty. That's just a few features ShortyK8s provides. Check out \`k\` usage for more!"
-sleep 3
+sleep 6
