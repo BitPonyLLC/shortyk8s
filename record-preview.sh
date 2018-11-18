@@ -96,7 +96,7 @@ c "Cool. So, let's look at a view of the pods with their containers..."
 r k pc
 
 c "Better look at the logs, too... but let's use Stern (an external app) for that!"
- -w 0 k ~stern names & # stern watches forever
+r -w 0 k ~stern names & # stern watches forever
 sleep 8
 { kill %1 && wait; } 2>/dev/null
 
