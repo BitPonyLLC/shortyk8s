@@ -12,6 +12,7 @@ only require the most basic of Unix tooling (e.g. bash, awk, sed, tr, etc.) and 
 GNU-based options (i.e. should work on BSD flavors like OS X just as well as Ubuntu).
 
 * [Preview](#preview)
+   * [Quick Shot Examples](#quick-shot-examples)
 * [Installing and Updating](#installing-and-updating)
    * [Using in Bash](#using-in-bash)
    * [Using in Other Shells](#using-in-other-shells)
@@ -31,7 +32,7 @@ GNU-based options (i.e. should work on BSD flavors like OS X just as well as Ubu
 
 [![asciicast](https://asciinema.org/a/212486.svg)](https://asciinema.org/a/212486?loop=1&autoplay=1)
 
-### Quick Shots
+### Quick Shot Examples
 
 Here are just a few of the ways shortyk8s makes kubectl life so much simpler:
 
