@@ -67,7 +67,7 @@ Much of this is driven through additional abbreviations and simple expansion tri
     ^<pod_match>        replace with FIRST matching pod
     @<container_match>  replace with FIRST matching container in pod (requires ^<pod_match>)
     ,<node_match>       replace with matching nodes
-    ~<alt_command>      replace `kubectl` with `<alt_command> --context prd-usc1 -n sst-collab`
+    ~<alt_command>      replace `kubectl` with `<alt_command> --context <k8s_context> -n <k8s_namesppace>`
 ```
 
 ---
