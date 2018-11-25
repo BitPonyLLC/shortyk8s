@@ -31,6 +31,44 @@ GNU-based options (i.e. should work on BSD flavors like OS X just as well as Ubu
 
 [![asciicast](https://asciinema.org/a/212486.svg)](https://asciinema.org/a/212486?loop=1&autoplay=1)
 
+### Quick Shots
+
+Here are just a few of the ways shortyk8s makes kubectl life so much simpler:
+
+``` shell
+k po                       # => kubectl get pods
+k g .odd y                 # => kubectl get pods oddjob-2231453331-sj56r -oyaml
+k repl ^web @nginx ash     # => kubectl exec -ti webservice-3928615836-37fv4 -c nginx ash
+k l ^job --tail=5          # => kubectl logs bgjobs-1444197888-7xsgk --tail=5
+k s 8 dep web              # => kubectl scale --replicas=8 deployments webservice
+k ~stern ^job --tail 5     # => stern --context usw1 -n prod bgjobs-1444197888-7xsgk --tail 5
+k cp notes.txt ^web:/tmp   # => kubectl cp notes.txt web-55b79cccb9-cjv2s:/tmp -c web
+```
+
+Much of this is driven through additional abbreviations and simple expansion triggers:
+
+```
+    a <f>    apply --filename=<f>
+    g        get
+    d        describe
+    del      delete
+    ex       exec
+    exi      exec -ti
+    l        logs
+    s <r>    scale --replicas=<r>
+
+    all      --all-namespaces
+    any      --all-namespaces
+    w        -owide
+    y        -oyaml
+
+    .<pod_match>        replace with matching pods (will include "kind" prefix)
+    ^<pod_match>        replace with FIRST matching pod
+    @<container_match>  replace with FIRST matching container in pod (requires ^<pod_match>)
+    ,<node_match>       replace with matching nodes
+    ~<alt_command>      replace `kubectl` with `<alt_command> --context prd-usc1 -n sst-collab`
+```
+
 ---
 ## Installing and Updating
 
