@@ -13,7 +13,11 @@ GNU-based options (i.e. should work on BSD flavors like OS X just as well as Ubu
 
 * [Preview](#preview)
 * [Installing and Updating](#installing-and-updating)
+   * [Using in Bash](#using-in-bash)
+   * [Using in Other Shells](#using-in-other-shells)
+   * [Updating](#updating)
 * [Working with Contexts and Namespaces](#working-with-contexts-and-namespaces)
+   * [Gotta Match 'Em All!](#gotta-match-em-all)
    * [Set Independent Context Terminal Sessions](#set-independent-context-terminal-sessions)
 * [Working with Nodes and Pods](#working-with-nodes-and-pods)
    * [Executing Remote Actions](#executing-remote-actions)
@@ -25,29 +29,51 @@ GNU-based options (i.e. should work on BSD flavors like OS X just as well as Ubu
 ---
 ## Preview
 
-[![asciicast](https://asciinema.org/a/207788.png)](https://asciinema.org/a/207788?loop=1&autoplay=1)
+[![asciicast](https://asciinema.org/a/212486.svg)](https://asciinema.org/a/212486?loop=1&autoplay=1)
 
 ---
 ## Installing and Updating
 
 Because shorty8s only depends on Bash (v3 or greater) and standard Unix tools (awk, grep, sed,
-etc.), installation is a simple matter of downloading and sourcing:
+etc.), installation is a simple matter of downloading:
 
 ``` shell
 $ curl https://raw.githubusercontent.com/bradrf/shortyk8s/master/shortyk8s.sh | bash -s -- install
-
-$ source ~/.bash_profile
 ```
 
 *Note:* Always read through scripts before executing them! In the above case, shortyk8s'
-`kupdate --install` function will be invoked by the bottom portion of the script:
+`shortyk8s_update --install` function will be invoked by the bottom portion of the script:
 
   * https://raw.githubusercontent.com/bradrf/shortyk8s/master/shortyk8s.sh
+
+### Using in Bash
+
+For users of Bash as their primary shell, the recommendation is to source shortyk8s from your
+initialization file:
+
+``` shell
+$ echo '. ~/.shortyk8s/shortyk8s.sh' >> ~/.bashrc
+```
+
+### Using in Other Shells
+
+For folks that prefer other shells (e.g. fish, ksh, tcsh, zsh, etc.), as long as Bash is also
+installed on the system, shortyk8s can be run as a script:
+
+``` shell
+$ ~/.shortyk8s/shortyk8s.sh u
+```
+
+Another recommendation to consider is adding a command alias or shortcut to name
+`~/.shorty8s/shortyk8s` as `k` to keep consistent with the usage examples (and keep your commands
+short).
+
+### Updating
 
 To get the latest version of shortyk8s, it provides a helper to automate that process for you:
 
 ``` shell
-$ kupdate
+$ k update
 ```
 
 ---
@@ -107,6 +133,10 @@ $ k u reset
 *  prod-usw1   prod-usw1   prod-usw1   database
 ```
 
+Once a terminal is using a shortyk8s session, it continues to use sessions in any other `use` call
+allowing you to switch to other contexts and only affect the current session. To revert back to
+using the saved context, issue a `k use reset`.
+
 See also: [showing the current context in your shell prompt](#shell-prompt).
 
 ---
@@ -141,6 +171,26 @@ NAME                   STATUS   IMAGES
 names-bcc8779b4-dtjl4  Running  tomdesinto/name-generator:latest
 names-bcc8779b4-g9wv2  Running  tomdesinto/name-generator:latest
 names-bcc8779b4-k8nlb  Running  tomdesinto/name-generator:latest
+```
+
+### Gotta Match 'Em All!
+
+Rarely does one have the full pod names at hand, so shortyk8s has some expansion helpers to make
+finding the right pod(s) a simple matter of remembering the basename. For example, to describe only
+the "job" pods, use the dot expansion to match all pods with the "job" name:
+
+``` shell
+$ k d po .job
+kubectl describe pods job-84b767bb7f-f5jl4 job-84b767bb7f-f7cbv job-84b767bb7f-qbwqm
+...
+```
+
+Same goes for nodes, but for those, use the comma expansion form:
+
+``` shell
+$ k d no ,gke-test
+kubectl describe nodes gke-test-node-c91597fa-jsq3 gke-test-node-c91597fa-szwn
+...
 ```
 
 ### Executing Remote Actions
@@ -212,12 +262,12 @@ ly
 ...
 ```
 
-During a deployment, however, shortyk8s provides "kwatch" which will start watching events,
-reporting changes to the pods and containers, as well as a periodic timestamp to show when "nothing"
-is happening:
+During a deployment, however, shortyk8s provides `watch` which will start watching events, reporting
+changes to the pods and containers, as well as a periodic timestamp to show when "nothing" is
+happening:
 
 ``` shell
-$ kwatch
+$ k watch
 kubectl get ev --no-headers --sort-by=.lastTimestamp -ocustom-columns=TIMESTAMP:.lastTimestamp\,COUNT:.count\,KIND:.involvedObject.kind\,NAME:.involvedObject.name\,MESSAGE:.message --watch-on
 ly
 kubectl get pods -ocustom-columns=NAME:.metadata.name\,CONTAINERS:.status.containerStatuses\[\*\].name\,STATUS:.status.phase\,RESTARTS:.status.containerStatuses\[\*\].restartCount\,HOST_IP:.s
@@ -267,7 +317,7 @@ terminal session. To that end, you can use the "kprompt" function in your bashrc
 the current context. Here's a simple illustration:
 
 ``` shell
-$ PROMPT_COMMAND=kprompt
+$ PROMPT_COMMAND=shortyk8s_prompt
 
 docker-for-desktop/shortyk8s
 $ k u -s minikube
@@ -280,6 +330,7 @@ docker-for-desktop/shortyk8s
 $
 ```
 
+---
 ## Everything Else
 
 Shortyk8s is capable of much more. To see the full list of commands and expansions available, refer

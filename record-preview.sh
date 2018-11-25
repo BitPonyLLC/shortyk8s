@@ -22,25 +22,31 @@ fi
 CLR=$(echo -e '\033c')
 CMD=$(echo -e '\033[0;35m$ ')
 
+function t()
+{
+    local text="$*"
+    for ((i = 0; i < ${#text}; i++)) ; do
+        sleep 0.07
+        echo -n "${text:$i:1}"
+    done
+}
+
 function c()
 {
     local wc=$(awk -F' ' '{print NF}' <<< "$@")
-    echo -e "${CLR}\n# ${_KOK}$*${_KNM}\n"
-    sleep $(( ${wc} / 3 + 1 )) # avg reader is 200 wpm (or 3 per second)
+    echo -en "${CLR}\n# ${_KOK}"
+    t "$*"
+    echo -e "${_KNM}\n"
 }
 
 function r()
 {
     local w=3
     if [[ "$1" = '-w' ]]; then shift; w=$1; shift; fi
-    if [[ "$1" = '-e' ]]; then
-        shift
-        echo -n "${CMD}"
-        printf '%q ' "$@"
-        echo "${_KNM}"
-    else
-        echo "${CMD}$*${_KNM}"
-    fi
+    echo -en "${CMD}"
+    sleep 2
+    t "$*"
+    echo "${_KNM}"
     "$@"
     echo
     sleep $w
@@ -68,7 +74,7 @@ r -w 4 k u "$NS"
 
 c "Nice! So now we should see our containers starting up. Let's watch!"
 r -w 0 k po -w &
-sleep 3
+sleep 5
 { kill %1 && wait; } 2>/dev/null # silence job termination message
 
 c "Ok, so if they're ready, let's hop in to one and peek at its processes..."
@@ -91,8 +97,8 @@ r k pc
 
 c "Better look at the logs, too... but let's use Stern (an external app) for that!"
 r -w 0 k ~stern names & # stern watches forever
-sleep 4
+sleep 8
 { kill %1 && wait; } 2>/dev/null
 
 c "Alrighty. That's just a few features ShortyK8s provides. Check out \`k\` usage for more!"
-sleep 3
+sleep 6
