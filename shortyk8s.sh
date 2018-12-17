@@ -33,6 +33,7 @@ function k()
     exi      exec -ti
     l        logs
     s <r>    scale --replicas=<r>
+    draini   drain --delete-local-data --ignore-daemonsets
 
 ${_KCMDS_HELP}
     pc       get pods and containers
@@ -89,6 +90,7 @@ EOF
             any|all) args+=(--all-namespaces);;
             d|desc) args+=(describe);;
             del) args+=(delete);;
+            draini) args+=(drain --delete-local-data --ignore-daemonsets);;
             ex) args+=('exec');;
             exi) args+=('exec' -ti);;
             g) args+=(get);;
@@ -111,6 +113,11 @@ EOF
                 args+=('-ocustom-columns=NAME:.metadata.name,STATUS:.status.phase,'`
                       `'IMAGES:.status.containerStatuses[*].image')
                 ;;
+            pn)
+                _kget pods
+                args+=('-ocustom-columns=NAME:.metadata.name,STATUS:.status.phase,'`
+                      `'IMAGES:.status.containerStatuses[*].image')
+                ;;
             s)
                 if ! [[ "$1" =~ ^[[:digit:]]+$ ]]; then
                     echo "\"scale\" requires replicas (\"$1\" is not a number)" >&2
@@ -121,8 +128,8 @@ EOF
             tn) args+=(top node);;
             tp) args+=(top pod --containers);;
             version)
+                _kcmd kubectl version "$@"
                 _kversioninfo "$@"
-                kubectl version "$@"
                 return
                 ;;
             w) args+=(-owide);;
@@ -134,7 +141,7 @@ EOF
             ~*)
                 cmd=${a:1}
                 case "$cmd" in
-                    helm) args+=(--kube-context "$(shortyk8s_ctx)") ;;
+                    helm) _KSAFE=true; args+=(--kube-context "$(shortyk8s_ctx)");;
                     *) args+=(--context "$(shortyk8s_ctx)" -n "$(shortyk8s_kns)")
                 esac
                 ;;
@@ -195,13 +202,12 @@ EOF
         $nc && fmtr+=' -nc'
     fi
 
-    local confirm=false
-    [[ " ${args[@]} " =~ ' delete ' || " ${args[@]} " =~ ' scale ' ]] && confirm=true
+    [[ " ${args[@]} " =~ ' delete ' || " ${args[@]} " =~ ' scale ' ]] && _KCONFIRM=true
 
     if [[ -n "$fmtr" ]]; then
-        _KCONFIRM=$confirm _kcmd "$cmd" "${args[@]}" | $fmtr
+        _kcmd "$cmd" "${args[@]}" | $fmtr
     else
-        _KCONFIRM=$confirm _kcmd "$cmd" "${args[@]}"
+        _kcmd "$cmd" "${args[@]}"
     fi
     local rc=$?
 
@@ -561,6 +567,8 @@ NR > 1 {
     if (status_col > 0) {
         if (match($status_col, /Disabled|Pending|Creating|Init/)) {
             $status_col = WN $status_col NM
+        } else if (match($status_col, /NotReady/)) {
+            $status_col = ER $status_col NM
         } else if (match($status_col, /Running|Ready|Active|Succeeded|Completed/)) {
             $status_col = OK $status_col NM
         } else {
@@ -628,7 +636,8 @@ function _knodeips()
 {
     local names=()
     [[ $# -gt 0 ]] && \
-        names=($(kubectl get nodes --show-labels --no-headers | awk "/$*/{print \$1}"))
+        names=($(_KQUIET=true _kcmd kubectl get nodes --show-labels --no-headers | \
+                     awk "/$*/{print \$1}"))
     _kcmd kubectl get nodes "${names[@]}" \
           -ojsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'
 }
@@ -810,16 +819,14 @@ EOF
     xargs "${x_args[@]}" -- "${e_args[@]}" -- "$remote_cmd" <<< "${resources[@]}"
 }
 
-_KNOOP=false
-_KQUIET=false
-_KCONFIRM=false
 # internal helper to build a command line (setting context/namespace when appropriate)
 function _kcmd()
 {
     local cmd=$1; shift
     local args=("$@")
+    local rc
 
-    if [[ ! " ${args[@]} " =~ ' --context' ]]; then
+    if ! $_KSAFE && [[ ! " ${args[@]} " =~ ' --context' ]]; then
         if [[ ! " ${args[@]} " =~ ' --namespace' && \
                   ! " ${args[@]} " =~ ' -n ' && \
                   ! " ${args[@]} " =~ ' --all-namespaces ' ]]; then
@@ -846,7 +853,20 @@ function _kcmd()
     fi
 
     "$cmd" "${args[@]}"
+    _kcmd_reset $?
 }
+
+# internal helper to reset temporary overrides for _kcmd()
+function _kcmd_reset()
+{
+    _KNOOP=false
+    _KQUIET=false
+    _KCONFIRM=false
+    _KSAFE=false
+    return $1
+}
+
+_kcmd_reset 0
 
 # first, preload the list of known kubectl get commands
 _KCMDS=()
