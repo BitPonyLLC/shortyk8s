@@ -448,7 +448,7 @@ function shortyk8s_each()
     function _keach_prepare() {
         local shell_cmd=(/bin/sh -c)
         _KNOOP=true _kcmd kubectl
-        e_args+=("$_KCMD" exec '{}')
+        e_args+=($_KCMD exec '{}')
         [[ -n "$con" ]] && e_args+=(-c "$con")
         if $interactive; then
             shell_cmd=('TERM=term' "${shell_cmd[@]}")
