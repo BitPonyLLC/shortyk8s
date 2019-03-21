@@ -416,7 +416,7 @@ EOF
 
     local cmd pods con cnt e_args=('exec' -ti)
 
-    _kgetpodcon "$1" "$2" -m1 || return $?
+    _KSTATUS=Running _kgetpodcon "$1" "$2" -m1 || return $?
     shift $cnt
 
     e_args+=("${pods[0]}")
@@ -440,7 +440,7 @@ function shortyk8s_each()
 
     function _keach_resources() {
         local pods
-        _kgetpodcon "$1" "$2" || return $?
+        _KSTATUS=Running _kgetpodcon "$1" "$2" || return $?
         resources=("${pods[@]}")
         match_shift=$cnt
     }
@@ -464,7 +464,7 @@ _KPUB+=('a=watch;c=shortyk8s_watch;d="watch events and pods concurrently"')
 function shortyk8s_watch()
 {
     ( # run in a subshell to trap control-c keyboard interrupt for cleanup of bg procs
-        kevw --new &
+        shortyk8s_evw --new &
         while true; do sleep 10; echo; echo ">>> $(date) <<<"; done &
         trap 'kill %1 %2' EXIT
         k pc -w
@@ -733,7 +733,11 @@ function _kctxgrep()
 function _knamegrep()
 {
     local res=$1; shift
-    _KQUIET=true _kcmd kubectl get $knames $res | egrep "$@"
+    local args=(kubectl get $knames)
+    if [[ "$res" = po* && -n "$_KSTATUS" ]]; then
+       args+=("--field-selector=status.phase=${_KSTATUS}")
+    fi
+    _KQUIET=true _kcmd "${args[@]}" "$res" | egrep "$@"
 }
 
 # internal helper to list matching container names for a given pod
@@ -863,6 +867,7 @@ function _kcmd_reset()
     _KQUIET=false
     _KCONFIRM=false
     _KSAFE=false
+    _KSTATUS=''
     return $1
 }
 

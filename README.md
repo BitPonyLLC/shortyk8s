@@ -9,7 +9,9 @@ Shortyk8s provides simplified kubectl command lines through abbreviations and ex
 containers, pods, nodes, namespaces, and contexts. Most commands shortyk8s builds up are reported to
 help you understand the full kubectl command being executed. The guiding premise is that it should
 only require the most basic of Unix tooling (e.g. bash, awk, sed, tr, etc.) and should not rely on
-GNU-based options (i.e. should work on BSD flavors like OS X just as well as Ubuntu).
+GNU-based options (i.e. should work on BSD flavors like OS X just as well as Ubuntu). Shortyk8s is
+written in Bash to avoid compatibility issues--as kubectl changes, shortyk8s implicitly supports new
+functionality or APIs in use.
 
 * [Preview](#preview)
    * [Quick Shot Examples](#quick-shot-examples)
