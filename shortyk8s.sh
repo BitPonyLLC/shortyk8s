@@ -631,6 +631,12 @@ EOF
     fi
 }
 
+# internal helper to support lookup of item or items as a go-template
+function _kitemtmpl()
+{
+    echo "-ogo-template={{if .items}}{{range .items}}$1{{end}}{{end}}{{if not .items}}$1{{end}}"
+}
+
 # internal helper to list all internal node IPs
 function _knodeips()
 {
@@ -639,7 +645,7 @@ function _knodeips()
         names=($(_KQUIET=true _kcmd kubectl get nodes --show-labels --no-headers | \
                      awk "/$*/{print \$1}"))
     _kcmd kubectl get nodes "${names[@]}" \
-          -ojsonpath='{.items[*].status.addresses[?(@.type=="InternalIP")].address}'
+          "$(_kitemtmpl '{{range .status.addresses}}{{if eq .type "InternalIP"}}{{.address}} {{end}}{{end}}')"
 }
 
 # internal helper to show contexts without the first column, indicating session changes, optionally
