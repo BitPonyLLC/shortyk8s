@@ -13,6 +13,12 @@ fi
 # show only the names (different than -oname which includes the kind of resource as a prefix)
 knames='--no-headers -ocustom-columns=:metadata.name'
 
+# build a go template for displaying container details of pods
+kpctmpl="$(_ktabletmpl 'NAME\tCONTAINERS\tREADY\tRESTARTS\tHOST_IP'\
+                       .metadata.name "$(_kjointmpl .status.containerStatuses name)"\
+                       "$(_kjointmpl .status.containerStatuses ready)"\
+                       "$(_kjointmpl .status.containerStatuses restartCount)" .status.hostIP)"
+
 _KPUB=()
 
 # main entry point for all shortyk8s commands
@@ -104,7 +110,8 @@ EOF
             pc)
                 _kget pods
                 args+=('-ocustom-columns=NAME:.metadata.name,'`
-                      `'CONTAINERS:.status.containerStatuses[*].name,STATUS:.status.phase,'`
+                      `'CONTAINERS:.status.containerStatuses[*].name,'`
+                      `'READY:.status.containerStatuses[*].ready,'`
                       `'RESTARTS:.status.containerStatuses[*].restartCount,'`
                       `'HOST_IP:.status.hostIP')
                 ;;
@@ -160,7 +167,7 @@ EOF
                 shift
                 ;;
             -w|-h*|-o*)
-                args+=($a)
+                args+=("$a")
                 nc=true
                 ;;
             *)
@@ -552,7 +559,7 @@ BEGIN {
 
 NR == 1 {
     for (i = 1; i <= NF; ++i) {
-        if (match($i, /STATUS/)) {
+        if (match($i, /STATUS|READY/)) {
             status_col = i
             $status_col = NM $status_col NM
         } else if (match($i, /RESTART/)) {
@@ -569,27 +576,26 @@ NR > 1 {
             $status_col = WN $status_col NM
         } else if (match($status_col, /NotReady/)) {
             $status_col = ER $status_col NM
-        } else if (match($status_col, /Running|Ready|Active|Succeeded|Completed/)) {
+        } else if (match($status_col, /Running|Ready|Active|Succeeded|Completed|true/)) {
             $status_col = OK $status_col NM
         } else {
             $status_col = ER $status_col NM
         }
     }
     if (restart_col > 0) {
+        # split array will not be in order, so look for anomolies and highlight whole entry
         split($restart_col, cnts, ",")
-        v = ""
+        cnt = 0
         for (k in cnts) {
-            cnt = cnts[k]
-            if (cnt > 10)
-                l = ER
-            else if (cnt > 0)
-                l = WN
-            else
-                l = NM
-            v = v l cnt NM ","
+            v = cnts[k]
+            if (v > cnt) cnt = v
         }
-        gsub(/,$/, "", v)
-        $restart_col = v
+        if (cnt > 10)
+            $restart_col = ER $restart_col NM
+        else if (cnt > 0)
+            $restart_col = WN $restart_col NM
+        else
+            $restart_col = NM $restart_col NM
     }
     print
 }
@@ -629,6 +635,24 @@ GitVersion:"$(_kversion)", GitCommit:"${_KGITCMT}", GitTreeState:"${state}", \
 BashVersion:"${BASH_VERSION}", Platform:"$(uname -s -m)"}
 EOF
     fi
+}
+
+function _kjointmpl()
+{
+    echo '{{range $i, $e := '"${1}"'}}{{if $i}},{{end}}{{$e.'"${2}"'}}{{end}}'
+}
+
+function _ktabletmpl()
+{
+    local tmpl q s=''
+    tmpl='{{println "'"${1}"'"}}{{range .items}}'; shift
+    for q in "$@"; do
+        [[ "$q" = '{{'* ]] || q="{{${q}}}"
+        tmpl+="${s}${q}"
+        s=$'\t'
+    done
+    tmpl+='{{println}}{{end}}'
+    echo "-ogo-template=$tmpl"
 }
 
 # internal helper to support lookup of item or items as a go-template
