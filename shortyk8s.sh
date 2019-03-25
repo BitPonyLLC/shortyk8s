@@ -13,12 +13,6 @@ fi
 # show only the names (different than -oname which includes the kind of resource as a prefix)
 knames='--no-headers -ocustom-columns=:metadata.name'
 
-# build a go template for displaying container details of pods
-kpctmpl="$(_ktabletmpl 'NAME\tCONTAINERS\tREADY\tRESTARTS\tHOST_IP'\
-                       .metadata.name "$(_kjointmpl .status.containerStatuses name)"\
-                       "$(_kjointmpl .status.containerStatuses ready)"\
-                       "$(_kjointmpl .status.containerStatuses restartCount)" .status.hostIP)"
-
 _KPUB=()
 
 # main entry point for all shortyk8s commands
