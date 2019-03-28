@@ -334,6 +334,7 @@ function shortyk8s_use()
     fi
 
     if $session; then
+        rm -f "$_KPROMPT_FN"
         _K8S_CTX=$ctx
         _K8S_NS=$ns
         if $_KSCRIPT; then
@@ -357,11 +358,18 @@ EOF
 _KPUB+=('a=prompt;c=shortyk8s_prompt;d="provide info for shell prompt"')
 function shortyk8s_prompt()
 {
-    if [[ -z "$_K8S_CTX" ]]; then
-        echo "$*$(shortyk8s_ctx)/$(shortyk8s_kns)"
+    # Large configs can take hundreds of milliseconds for kubectl config to process which will cause
+    # a grossly slow prompt. Using a file to store the value to allow caller to invoke in subshell.
+    local prompt_ts=$(_kfilets "$_KPROMPT_FN")
+    local config_ts=$(_kfilets "${KUBECONFIG:-${HOME}/.kube/config}")
+    if [[ $prompt_ts -le $config_ts ]]; then
+        prompt="$*$(shortyk8s_ctx)/$(shortyk8s_kns)"
+        [[ -n "$_K8S_CTX" ]] && prompt+='[tmp]'
+        echo "$prompt" > "$_KPROMPT_FN"
     else
-        echo "$*$(shortyk8s_ctx)/$(shortyk8s_kns)[tmp]"
+        prompt="$(cat "$_KPROMPT_FN")"
     fi
+    echo "$prompt"
 }
 
 _KPUB+=('a=ctx;c=shortyk8s_ctx;d="report current context"')
@@ -537,6 +545,9 @@ _KHOME="${HOME}/.shortyk8s"
 _KSESSION="${_KHOME}/sessions/${PPID}.sh"
 [[ -r "$_KSESSION" ]] && source "$_KSESSION"
 
+_KPROMPT_FN="${_KHOME}/.prompt"
+_KPROMPT_TS=0
+
 _KHI=$(echo -e '\033[30;43m') # black fg, yellow bg
 _KOK=$(echo -e '\033[01;32m') # bold green fg
 _KWN=$(echo -e '\033[01;33m') # bold yellow fg
@@ -629,6 +640,11 @@ GitVersion:"$(_kversion)", GitCommit:"${_KGITCMT}", GitTreeState:"${state}", \
 BashVersion:"${BASH_VERSION}", Platform:"$(uname -s -m)"}
 EOF
     fi
+}
+
+function _kfilets()
+{
+    date -r "$1" +%s 2>/dev/null || echo 0
 }
 
 function _kjointmpl()
@@ -887,6 +903,7 @@ function _kcmd()
 # internal helper to reset temporary overrides for _kcmd()
 function _kcmd_reset()
 {
+    rm -f "$_KPROMPT_FN"
     _KNOOP=false
     _KQUIET=false
     _KCONFIRM=false
