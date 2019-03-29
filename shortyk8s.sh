@@ -34,6 +34,7 @@ function k()
     l        logs
     s <r>    scale --replicas=<r>
     draini   drain --delete-local-data --ignore-daemonsets
+    sec [.]  get secret [<resource_name> [<secret_name>]]
 
 ${_KCMDS_HELP}
     pc       get pods and containers
@@ -125,6 +126,10 @@ EOF
                     return 3
                 fi
                 args+=(scale --replicas=$1); shift
+                ;;
+            sec)
+                _kgetsecret "$@"
+                return
                 ;;
             tn) args+=(top node);;
             tp) args+=(top pod --containers);;
@@ -619,7 +624,7 @@ function _kcolorize()
 _KMAJVER=0
 _KMINVER=1
 _KPATVER=$(TZ=UTC git -C "${_KHOME}" log -1 --format=%cd --date='format-local:%Y%m%d%H%M')
-_KSTATUS=$(git -C "${_KHOME}" status --porcelain --untracked-files=no 2>/dev/null)
+_KGITSTS=$(git -C "${_KHOME}" status --porcelain --untracked-files=no 2>/dev/null)
 _KGITCMT=$(git -C "${_KHOME}" log -1 --format=%H)
 
 function _kversion()
@@ -633,7 +638,7 @@ function _kversioninfo()
     if [[ " $@ " =~ ' --short' ]]; then
         echo "Shortyk8s Version: $(_kversion)"
     else
-        if [[ -z "$_KSTATUS" ]]; then state='clean'; else state='dirty'; fi
+        if [[ -z "$_KGITSTS" ]]; then state='clean'; else state='dirty'; fi
         cat <<EOF
 Shortyk8s Version: version.Info{Major:"${_KMAJVER}", Minor:"${_KMINVER}", \
 GitVersion:"$(_kversion)", GitCommit:"${_KGITCMT}", GitTreeState:"${state}", \
@@ -801,6 +806,21 @@ function _kget()
         args+=("$@")
     else
         args+=(get "$@")
+    fi
+}
+
+# internal helper to list secrets available or decode one
+function _kgetsecret()
+{
+    local args=(_kcmd kubectl get secret)
+    if [[ $# -lt 1 ]]; then
+        ${args[@]} -ogo-template='{{range .items}}{{$n := .metadata.name}}{{range $k, $v := .data}}{{println $n $k}}{{end}}{{end}}'
+    elif [[ $# -eq 1 ]]; then
+        ${args[@]} "$1" -ogo-template='{{range $k, $v := .data}}{{println $k}}{{end}}'
+    elif [[ $# -eq 2 ]]; then
+        ${args[@]} "$1" -ogo-template='{{index .data "'"$2"'"}}' | base64 -D
+    else
+        return 1
     fi
 }
 
