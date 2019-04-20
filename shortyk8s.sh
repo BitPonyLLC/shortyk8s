@@ -295,7 +295,7 @@ function shortyk8s_use()
     fi
 
     if [[ "$1" = 'reset' ]]; then
-        rm -f "${_KSESSION}"
+        rm -f "$_KPROMPT_FN" "$_KSESSION_FN"
         unset _K8S_CTX _K8S_NS
         [[ "$2" = '-q' ]] || shortyk8s_use
         return
@@ -342,14 +342,10 @@ function shortyk8s_use()
         rm -f "$_KPROMPT_FN"
         _K8S_CTX=$ctx
         _K8S_NS=$ns
-        if $_KSCRIPT; then
-            mkdir -p "$(dirname "$_KSESSION")"
-            cat <<EOF > "$_KSESSION"
+        cat <<EOF > "$_KSESSION_FN"
 _K8S_CTX='${_K8S_CTX}'
 _K8S_NS='${_K8S_NS}'
 EOF
-        fi
-        echo "Temporarily switching to context \"${_K8S_CTX}\" using namespace \"${_K8S_NS}\""
     else
         shortyk8s_use reset -q
         kubectl config set-context "$ctx" --namespace "$ns" | \
@@ -544,14 +540,10 @@ function shortyk8s_update()
 ######################################################################
 # PRIVATE - internal helpers
 
-_KSCRIPT=false
 _KHOME="${HOME}/.shortyk8s"
 
-_KSESSION="${_KHOME}/sessions/${PPID}.sh"
-[[ -r "$_KSESSION" ]] && source "$_KSESSION"
-
-_KPROMPT_FN="${_KHOME}/.prompt"
-_KPROMPT_TS=0
+_KSESSIONS_DIR="${_KHOME}/sessions"
+[[ -d "$_KSESSIONS_DIR" ]] || mkdir -p "$_KSESSIONS_DIR"
 
 _KHI=$(echo -e '\033[30;43m') # black fg, yellow bg
 _KOK=$(echo -e '\033[01;32m') # bold green fg
@@ -646,6 +638,17 @@ BashVersion:"${BASH_VERSION}", Platform:"$(uname -s -m)"}
 EOF
     fi
 }
+
+function _ksessions_set()
+{
+    _KPID=$1
+    _KSESSION_FN="${_KSESSIONS_DIR}/${_KPID}_session.sh"
+    [[ -r "$_KSESSION_FN" ]] && source "$_KSESSION_FN"
+    _KPROMPT_TS=0
+    _KPROMPT_FN="${_KSESSIONS_DIR}/${_KPID}_prompt.sh"
+}
+
+_ksessions_set $$
 
 function _kfilets()
 {
@@ -1000,7 +1003,7 @@ And then try this to show the current kubectl configuration contexts:
 
 EOF
     else
-        _KSCRIPT=true
+        _ksessions_set $PPID
         k "$@"
     fi
 elif [[ "$0" = "bash" && "$1" == 'install' ]]; then
