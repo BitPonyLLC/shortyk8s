@@ -924,7 +924,6 @@ function _kcmd()
 # internal helper to reset temporary overrides for _kcmd()
 function _kcmd_reset()
 {
-    rm -f "$_KPROMPT_FN"
     _KNOOP=false
     _KQUIET=false
     _KCONFIRM=false
@@ -1011,3 +1010,5 @@ elif [[ "$0" = "bash" && "$1" == 'install' ]]; then
 fi
 
 [[ -z "$_KSESSION_FN" ]] && _ksessions_set $$
+
+:
