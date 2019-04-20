@@ -648,8 +648,6 @@ function _ksessions_set()
     _KPROMPT_FN="${_KSESSIONS_DIR}/${_KPID}_prompt.sh"
 }
 
-_ksessions_set $$
-
 function _kfilets()
 {
     date -r "$1" +%s 2>/dev/null || echo 0
@@ -1005,8 +1003,11 @@ EOF
     else
         _ksessions_set $PPID
         k "$@"
+        exit $!
     fi
 elif [[ "$0" = "bash" && "$1" == 'install' ]]; then
     # invoked from curl piped to bash (README instructions)
     shortyk8s_update --install
 fi
+
+[[ -z "$_KSESSION_FN" ]] && _ksessions_set $$
