@@ -92,6 +92,10 @@ EOF
             d|desc) args+=(describe);;
             del) args+=(delete);;
             draini) args+=(drain --delete-local-data --ignore-daemonsets);;
+            ev)
+                _kget events
+                nc=true
+                ;;
             ex) args+=('exec');;
             exi) args+=('exec' -ti);;
             g) args+=(get);;
@@ -648,6 +652,15 @@ function _ksessions_set()
     _KPROMPT_FN="${_KSESSIONS_DIR}/${_KPID}_prompt.sh"
 }
 
+function _ksessions_clean()
+{
+    local fn pid
+    for fn in "${_KSESSIONS_DIR}/"*; do
+        pid=$(basename "${fn}" | tr -dC '[:digit:]')
+        [[ -z "${pid}" ]] || kill -0 "${pid}" 2>/dev/null || \rm -f "${fn}"
+    done
+}
+
 function _kfilets()
 {
     date -r "$1" +%s 2>/dev/null || echo 0
@@ -1010,5 +1023,6 @@ elif [[ "$0" = "bash" && "$1" == 'install' ]]; then
 fi
 
 [[ -z "$_KSESSION_FN" ]] && _ksessions_set $$
+_ksessions_clean
 
 :
