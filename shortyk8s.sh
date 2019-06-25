@@ -515,25 +515,29 @@ function shortyk8s_evw()
 _KPUB+=('a=report;c=shortyk8s_report;d="report all interesting resources"')
 function shortyk8s_report()
 {
-    local rsc res ns=$(shortyk8s_kns)
+    local c res ns=$(shortyk8s_kns)
     local ign='all|events|clusterroles|clusterrolebindings|customresourcedefinition|namespaces|'`
              `'nodes|persistentvolumeclaims|storageclasses'
-    for rsc in $(_kcmd kubectl get 2>&1 | awk '/^  \* /{if (!($2 ~ /^('"${ign}"')$/)) print $2}'); do
-        if [[ "${rsc}" = 'persistentvolumes' ]]; then
-            res=$(_kcmd kubectl get "${rsc}" | awk 'NR==1{print};$6 ~ /^'"${ns}"'/{print}')
+    _kapi_resources
+    for vals in "${_KAPI_RESOURCES[@]}"; do
+        eval "${vals}"
+        if [[ "$c" = 'persistentvolumes' ]]; then
+            res=$(_kcmd kubectl get "$c" | awk 'NR==1{print};$6 ~ /^'"${ns}"'/{print}')
         else
-            res=$(_kcmd kubectl get "${rsc}" 2>&1)
+            res=$(_kcmd kubectl get "$c" 2>&1)
         fi
         [[ $? -eq 0 ]] || continue
         [[ $(echo "$res" | wc -l ) -lt 2 ]] && continue
         cat <<EOF
 
 ----------------------------------------------------------------------
-$(upcase "$rsc")
+$(upcase "$c")
 
 ${res}
 EOF
     done
+
+    unset _KAPI_RESOURCES
 }
 
 _KPUB+=('')
@@ -667,6 +671,18 @@ Shortyk8s Version: version.Info{Major:"${_KMAJVER}", Minor:"${_KMINVER}", \
 GitVersion:"$(_kversion)", GitCommit:"${_KGITCMT}", GitTreeState:"${state}", \
 BashVersion:"${BASH_VERSION}", Platform:"$(uname -s -m)"}
 EOF
+    fi
+}
+
+function _kapi_resources()
+{
+    # use cached version of api-resources as this requires a query to the cluster
+    local fn="${_KSESSIONS_DIR}/api_resources.${_kubectl_majver}_${_kubectl_minver}"
+    if [[ -s "${fn}" ]]; then
+        _KAPI_RESOURCES=($(cat "${fn}"))
+    else
+        local str='NR==1{i=index($0,"SHORTNAMES")}; NR>1{a=substr($0,i,1);if(a!=" "){a=$2};print "c="$1";a="a}'
+        _KAPI_RESOURCES=($(kubectl api-resources --cached=true | awk "$str" | tee "${fn}"))
     fi
 }
 
@@ -974,20 +990,12 @@ function _kcmd_reset()
 
 _kcmd_reset 0
 
-# use cached version of api-resources as this requires a query to the cluster
-_kapi_resources_fn="${_KSESSIONS_DIR}/api_resources.${_kubectl_majver}_${_kubectl_minver}"
-if [[ -s "${_kapi_resources_fn}" ]]; then
-    lines=($(cat "${_kapi_resources_fn}"))
-else
-    str='NR==1{i=index($0,"SHORTNAMES")}; NR>1{a=substr($0,i,1);if(a!=" "){a=$2};print "c="$1";a="a}'
-    lines=($(kubectl api-resources --cached=true | awk "$str" | tee "${_kapi_resources_fn}"))
-fi
-
 # first, preload the list of known kubectl get commands
 _KCMDS=()
 _KCMDS_AKA=()
 _KCMDS_HELP=''
-for vals in "${lines[@]}"; do
+_kapi_resources
+for vals in "${_KAPI_RESOURCES[@]}"; do
     eval "$vals"
     a=${a/%,*/} # use only first option in a comma list
     [[ "$a" = 'deploy' ]] && a='dep'
@@ -1010,7 +1018,7 @@ for vals in "${_KPUB[@]}"; do
     _KCMDS_HELP+=$(printf '    %-8s %s' "$a" "$d")$'\n'
 done
 
-unset str lines vals c a d _KPUB
+unset vals c a d _KPUB _KAPI_RESOURCES
 
 ################################################################################
 # handle when script is executed
