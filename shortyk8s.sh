@@ -10,6 +10,18 @@ if [ -z "${BASH_VERSINFO}" ] || [ -z "${BASH_VERSINFO[0]}" ] || [ ${BASH_VERSINF
 EOF
 fi
 
+eval $(kubectl version --client -ojson | \
+           awk -F\" '/major/{print "_kubectl_majver="$4} /minor/{print "_kubectl_minver="$4}')
+if [[ $_kubectl_majver -lt 1 ]] || [[ $_kubectl_majver -eq 1 && $_kubectl_minver -lt 11 ]]; then
+    cat <<EOF
+
+**********************************************************************
+               Shortyk8s requires Kubectl version >= 1.11
+**********************************************************************
+
+EOF
+fi
+
 # show only the names (different than -oname which includes the kind of resource as a prefix)
 knames='--no-headers -ocustom-columns=:metadata.name'
 
@@ -565,7 +577,10 @@ BEGIN {
 
 NR == 1 {
     for (i = 1; i <= NF; ++i) {
-        if (match($i, /STATUS|READY/)) {
+        if (match($i, /READY/)) {
+            ready_col = i
+            $ready_col = NM $ready_col NM
+        } else if (match($i, /STATUS/)) {
             status_col = i
             $status_col = NM $status_col NM
         } else if (match($i, /RESTART/)) {
@@ -577,6 +592,18 @@ NR == 1 {
 }
 
 NR > 1 {
+    if (ready_col > 0) {
+        n = split($ready_col, a, "/")
+        if (n == 2) {
+            if (a[1] == a[2]) {
+                $ready_col = OK $ready_col NM
+            } else {
+                $ready_col = ER $ready_col NM
+            }
+        } else {
+            $ready_col = NM $ready_col NM
+        }
+    }
     if (status_col > 0) {
         if (match($status_col, /Disabled|Pending|Creating|Init/)) {
             $status_col = WN $status_col NM
@@ -655,7 +682,7 @@ function _ksessions_set()
 function _ksessions_clean()
 {
     local fn pid
-    for fn in "${_KSESSIONS_DIR}/"*; do
+    for fn in "${_KSESSIONS_DIR}/"*_prompt.sh; do
         pid=$(basename "${fn}" | tr -dC '[:digit:]')
         [[ -z "${pid}" ]] || kill -0 "${pid}" 2>/dev/null || \rm -f "${fn}"
     done
@@ -947,17 +974,19 @@ function _kcmd_reset()
 
 _kcmd_reset 0
 
+# use cached version of api-resources as this requires a query to the cluster
+_kapi_resources_fn="${_KSESSIONS_DIR}/api_resources.${_kubectl_majver}_${_kubectl_minver}"
+if [[ -s "${_kapi_resources_fn}" ]]; then
+    lines=($(cat "${_kapi_resources_fn}"))
+else
+    str='NR==1{i=index($0,"SHORTNAMES")}; NR>1{a=substr($0,i,1);if(a!=" "){a=$2};print "c="$1";a="a}'
+    lines=($(kubectl api-resources --cached=true | awk "$str" | tee "${_kapi_resources_fn}"))
+fi
+
 # first, preload the list of known kubectl get commands
 _KCMDS=()
 _KCMDS_AKA=()
 _KCMDS_HELP=''
-str='s/^.*\* ([^ ]+) \(aka ([^\)]+).*$/c=\1;a=\2/p; s/^.*\* ([^ ]+) *$/c=\1;a=""/p'
-lines=($(kubectl get 2>&1 | sed -nE "$str"))
-if [[ ${#lines[@]} -eq 0 ]]; then
-    # newer versions of kubectl have an new command for the list of available resources
-    str='NR==1{i=index($0,"SHORTNAMES")}; NR>1{a=substr($0,i,1);if(a!=" "){a=$2};print "c="$1";a="a}'
-    lines=($(kubectl api-resources --cached=true | awk "$str"))
-fi
 for vals in "${lines[@]}"; do
     eval "$vals"
     a=${a/%,*/} # use only first option in a comma list
